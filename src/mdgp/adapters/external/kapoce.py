@@ -54,17 +54,6 @@ def kapoce_partition(G: nx.Graph, executable_path: str | Path) -> Partition:
 
     result = subprocess.run(cmd, input=input_data, text=True, capture_output=True, cwd=executable_path.parent)
 
-    print("KaPoCE input:")
-    print(input_data)
-    print("KaPoCE return code:", result.returncode)
-    print("KaPoCE stdout:")
-    print(result.stdout)
-    print("KaPoCE stderr:")
-    print(result.stderr)
-
-    if result.returncode != 0:
-        raise RuntimeError(f"KaPoCE failed with exit code {result.returncode}")
-
     edits = parse_kapoce_edits(result.stdout)
     edited_graph = apply_edits(G, edits)
 

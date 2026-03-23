@@ -3,7 +3,7 @@ from mdgp.adapters.external.kapoce import kapoce_partition
 from mdgp.adapters.external.leiden import leiden_modularity_partition
 from mdgp.adapters.matching import matching_partition
 from mdgp.core.evaluation import partition_density, partition_num_clusters, partition_cluster_sizes
-from mdgp.core.graph_io import load_all_json_graphs
+from mdgp.core.graph_io import load_all_pace_graphs
 import pandas as pd
 
 from functools import partial
@@ -13,7 +13,7 @@ kapoce_heuristic = partial(
     executable_path="/Users/Tessa/Uni/Masterarbeit/Repos zum Vergleichen/cluster_editing/build/heuristic"
 )
 
-instances = load_all_json_graphs("data/tiny")
+instances = load_all_pace_graphs("data/pace_ce/heur_small")
 
 results = []
 
@@ -49,5 +49,5 @@ pivot = df.pivot(index="instance", columns="algorithm", values="density")
 pivot = pivot.sort_index()
 pivot = pivot.round(2)
 
-pivot.to_csv("results/tiny_density_table.csv")
+pivot.to_csv("results/pace_density_table.csv")
 print(pivot)

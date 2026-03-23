@@ -8,7 +8,7 @@ class GraphInstance:
         self.name = name
         self.G = G
 
-def load_graph_instance(path: str | Path) -> GraphInstance:
+def load_json_graph_instance(path: str | Path) -> GraphInstance:
     path = Path(path)
 
     with open(path, "r") as f:
@@ -24,11 +24,35 @@ def load_graph_instance(path: str | Path) -> GraphInstance:
 
     return GraphInstance(name, G)
 
-def load_all_graphs(folder: str | Path):
+def load_all_json_graphs(folder: str | Path) -> list[GraphInstance]:
     folder = Path(folder)
-    instances = []
+    return [load_json_graph_instance(file) for file in folder.glob("*.json")]
 
-    for file in folder.glob("*.json"):
-        instances.append(load_graph_instance(file))
+def load_pace_graph_instance(path: str | Path) -> GraphInstance:
+    path = Path(path)
 
-    return instances
+    with open(path, "r", encoding="utf-8") as f:
+        lines = [line.strip() for line in f if line.strip()]
+
+        n = None
+        edges = []
+
+        for line in lines:
+            if line.startswith("p"):
+                parts = line.split()
+
+                n = int(parts[2])
+                continue
+
+            u, v = map(int, line.split())
+            edges.append((u-1, v-1))
+
+    G = nx.Graph()
+    G.add_nodes_from(range(n))
+    G.add_edges_from(edges)
+
+    return GraphInstance(name=path.stem, G=G)
+
+def load_all_pace_graphs(folder: str | Path) -> list[GraphInstance]:
+    folder = Path(folder)
+    return [load_pace_graph_instance(file) for file in folder.glob("*.gr")]
