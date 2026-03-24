@@ -11,8 +11,12 @@ def greedy_partition(G: nx.Graph) ->Partition:
         H = G.subgraph(remaining).copy()
         _, cluster = densest_subgraph(H)
 
+        if not cluster:
+            for v in remaining:
+                partition.append({v})
+            break
+
         partition.append(set(cluster))
         remaining -= set(cluster)
 
     return partition
-

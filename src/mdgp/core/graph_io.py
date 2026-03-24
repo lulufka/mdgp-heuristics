@@ -31,16 +31,17 @@ def load_all_json_graphs(folder: str | Path) -> list[GraphInstance]:
 def load_pace_graph_instance(path: str | Path) -> GraphInstance:
     path = Path(path)
 
+    n = None
+    edges = []
+
     with open(path, "r", encoding="utf-8") as f:
-        lines = [line.strip() for line in f if line.strip()]
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
 
-        n = None
-        edges = []
-
-        for line in lines:
             if line.startswith("p"):
                 parts = line.split()
-
                 n = int(parts[2])
                 continue
 

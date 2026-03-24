@@ -10,8 +10,7 @@ def write_pace_instance(G: nx.Graph) -> str:
     m = G.number_of_edges()
 
     lines = [f"p cep {n} {m}"]
-    for u,v in sorted(G.edges()):
-        lines.append(f"{u+1} {v+1}")
+    lines.extend(f"{u+1} {v+1}" for u, v in G.edges())
 
     return "\n".join(lines) + "\n"
 
@@ -35,11 +34,18 @@ def parse_kapoce_edits(output: str) -> list[tuple[int, int]]:
 
 def apply_edits(G: nx.Graph, edits: list[tuple[int, int]]) -> nx.Graph:
     H = G.copy()
-    for u,v in edits:
+
+    edges_to_remove = []
+    edges_to_add = []
+    
+    for u, v in edits:
         if H.has_edge(u, v):
-            H.remove_edge(u, v)
+            edges_to_remove.append((u, v))
         else:
-            H.add_edge(u, v)
+            edges_to_add.append((u, v))
+            
+    H.remove_edges_from(edges_to_remove)
+    H.add_edges_from(edges_to_add)
 
     return H
 

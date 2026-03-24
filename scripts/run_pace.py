@@ -3,17 +3,20 @@ from mdgp.adapters.external.kapoce import kapoce_partition
 from mdgp.adapters.external.leiden import leiden_modularity_partition
 from mdgp.adapters.matching import matching_partition
 from mdgp.core.evaluation import partition_density, partition_num_clusters, partition_cluster_sizes
-from mdgp.core.graph_io import load_all_pace_graphs
+from mdgp.core.graph_io import load_pace_graph_instance
+from pathlib import Path
 import pandas as pd
+import time
 
 from functools import partial
 
 kapoce_heuristic = partial(
     kapoce_partition,
-    executable_path="/Users/Tessa/Uni/Masterarbeit/Repos zum Vergleichen/cluster_editing/build/heuristic"
+    executable_path="/vol/fob-vol3/mi20/bertholt/cluster_editing/build/heuristic"
 )
 
-instances = load_all_pace_graphs("data/pace_ce/heur_small")
+folder = Path("data/pace_ce/heur")
+instance_files = sorted(folder.glob("*.gr"))
 
 results = []
 
@@ -24,17 +27,28 @@ algorithms = [
     ("kapoce", kapoce_heuristic),
 ]
 
-for inst in instances:
+for file_path in instance_files:
+    inst = load_pace_graph_instance(file_path)
+
     G = inst.G
+    n = G.number_of_nodes()
+    m = G.number_of_edges()
+    print(f"[{inst.name}] Start processing (n={n}, m={m})")
 
     for algorithm_name, algorithm in algorithms:
+        start_time = time.time()
         partition = algorithm(G)
+        end_time = time.time()
+        
+        elapsed_time = end_time - start_time
+        print(f"  -> {algorithm_name} finished in {elapsed_time:.4f}s")
 
         result = {
             "instance": inst.name,
             "algorithm": algorithm_name,
-            "n": G.number_of_nodes(),
-            "m": G.number_of_edges(),
+            "n": n,
+            "m": m,
+            "time": elapsed_time,
             "density": partition_density(G, partition),
             "num_clusters": partition_num_clusters(partition),
             "cluster_sizes": partition_cluster_sizes(partition),
@@ -42,12 +56,15 @@ for inst in instances:
 
         results.append(result)
 
-
 df = pd.DataFrame(results)
 
-pivot = df.pivot(index="instance", columns="algorithm", values="density")
-pivot = pivot.sort_index()
-pivot = pivot.round(2)
+pivot_density = df.pivot(index="instance", columns="algorithm", values="density")
+pivot_density = pivot_density.sort_index().round(2)
+pivot_density.to_csv("results/pace_density_table.csv")
 
-pivot.to_csv("results/pace_density_table.csv")
-print(pivot)
+pivot_time = df.pivot(index="instance", columns="algorithm", values="time")
+pivot_time = pivot_time.sort_index().round(4)
+pivot_time.to_csv("results/pace_time_table.csv")
+
+print("\n--- Laufzeiten (Sekunden) ---")
+print(pivot_time)
