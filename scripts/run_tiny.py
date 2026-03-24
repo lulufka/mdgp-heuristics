@@ -2,6 +2,7 @@ from mdgp.adapters.densest_subgraph import greedy_partition
 from mdgp.adapters.external.kapoce import kapoce_partition
 from mdgp.adapters.external.leiden import leiden_modularity_partition
 from mdgp.adapters.matching import matching_partition
+from mdgp.config import KAPOCE_EXECUTABLE, KAPOCE_CONFIG
 from mdgp.core.evaluation import partition_density, partition_num_clusters, partition_cluster_sizes
 from mdgp.core.graph_io import load_all_json_graphs
 import pandas as pd
@@ -10,7 +11,8 @@ from functools import partial
 
 kapoce_heuristic = partial(
     kapoce_partition,
-    executable_path="/Users/Tessa/Uni/Masterarbeit/Repos zum Vergleichen/cluster_editing/build/heuristic"
+    executable_path=KAPOCE_EXECUTABLE,
+    config_path=KAPOCE_CONFIG,
 )
 
 instances = load_all_json_graphs("data/tiny")

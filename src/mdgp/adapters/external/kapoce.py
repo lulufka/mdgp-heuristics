@@ -52,11 +52,19 @@ def apply_edits(G: nx.Graph, edits: list[tuple[int, int]]) -> nx.Graph:
 def cluster_graph_to_partition(H: nx.Graph) -> Partition:
     return [set(component) for component in nx.connected_components(H)]
 
-def kapoce_partition(G: nx.Graph, executable_path: str | Path) -> Partition:
+def kapoce_partition(G: nx.Graph, executable_path: str | Path, config_path: str | Path) -> Partition:
     executable_path = Path(executable_path)
+    config_path = Path(config_path)
+
+    if not executable_path.exists():
+        raise FileNotFoundError(f"KaPoCE executable not found: {executable_path}")
+
+    if not config_path.exists():
+        raise FileNotFoundError(f"KaPoCE config not found: {config_path}")
+
     input_data = write_pace_instance(G)
 
-    cmd = [str(executable_path)]
+    cmd = [str(executable_path), "-c", str(config_path)]
 
     result = subprocess.run(cmd, input=input_data, text=True, capture_output=True, cwd=executable_path.parent)
 

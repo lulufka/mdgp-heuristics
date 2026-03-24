@@ -2,6 +2,7 @@ from mdgp.adapters.densest_subgraph import greedy_partition
 from mdgp.adapters.external.kapoce import kapoce_partition
 from mdgp.adapters.external.leiden import leiden_modularity_partition
 from mdgp.adapters.matching import matching_partition
+from mdgp.config import KAPOCE_EXECUTABLE, KAPOCE_CONFIG
 from mdgp.core.evaluation import partition_density, partition_num_clusters, partition_cluster_sizes
 from mdgp.core.graph_io import load_pace_graph_instance
 from pathlib import Path
@@ -12,10 +13,11 @@ from functools import partial
 
 kapoce_heuristic = partial(
     kapoce_partition,
-    executable_path="/vol/fob-vol3/mi20/bertholt/cluster_editing/build/heuristic"
+    executable_path=KAPOCE_EXECUTABLE,
+    config_path=KAPOCE_CONFIG,
 )
 
-folder = Path("data/pace_ce/heur")
+folder = Path("data/pace_ce/heur_small")
 instance_files = sorted(folder.glob("*.gr"))
 
 results = []
@@ -65,6 +67,3 @@ pivot_density.to_csv("results/pace_density_table.csv")
 pivot_time = df.pivot(index="instance", columns="algorithm", values="time")
 pivot_time = pivot_time.sort_index().round(4)
 pivot_time.to_csv("results/pace_time_table.csv")
-
-print("\n--- Laufzeiten (Sekunden) ---")
-print(pivot_time)
