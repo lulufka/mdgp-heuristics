@@ -1,9 +1,22 @@
 import networkx as nx
 
-Partition = list[set[int]]
+from mdgp.core.types import Partition
+
 
 def matching_partition(G: nx.Graph) -> Partition:
-    matching = nx.max_weight_matching(G, maxcardinality=True)
+    """
+    Computes a partition of the graph based on a maximal matching.
+
+    Edges in the maximal matching form clusters of size 2. Nodes that
+    are not part of the matching are placed into clusters of size 1.
+
+    Args:
+        G (nx.Graph): The networkx graph to partition.
+
+    Returns:
+        Partition: A partition of the graph nodes based on the maximal matching.
+    """
+    matching = nx.maximal_matching(G)
 
     partition: Partition = []
     used = set()

@@ -1,0 +1,1 @@
+Partition = list[set[int]]
