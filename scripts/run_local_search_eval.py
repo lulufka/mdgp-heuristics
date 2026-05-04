@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import math
 import statistics
 import time
 from datetime import datetime
@@ -32,7 +31,9 @@ from mdgp.local_search.search import (
     LocalSearchResult,
     refine_partition_move_best_improvement,
     refine_partition_move_first_improvement, refine_partition_merge_first_improvement,
-    refine_partition_merge_best_improvement,
+    refine_partition_merge_best_improvement, refine_partition_merge_max_intercluster_edges,
+    refine_partition_merge_max_boundary_density, refine_partition_split_min_cut,
+    refine_partition_star_absorb_singletons, refine_partition_star_form_new_cluster,
 )
 
 kapoce_heuristic = partial(
@@ -121,6 +122,40 @@ def run_single_algorithm(
             max_passes=max_passes,
             max_moves=max_moves,
         )
+    elif postprocessing == "merge_max_intercluster_edges":
+        ls_result = refine_partition_merge_max_intercluster_edges(
+            G=G,
+            partition=start_partition,
+            max_passes=max_passes,
+            max_moves=max_moves,
+        )
+    elif postprocessing == "merge_max_boundary_density":
+        ls_result = refine_partition_merge_max_boundary_density(
+            G=G,
+            partition=start_partition,
+            max_passes=max_passes,
+            max_moves=max_moves,
+        )
+    elif postprocessing == "split_min_cut":
+        ls_result = refine_partition_split_min_cut(
+            G=G,
+            partition=start_partition,
+            max_passes=max_passes,
+        )
+    elif postprocessing == "star_absorb_singletons":
+        ls_result = refine_partition_star_absorb_singletons(
+            G=G,
+            partition=start_partition,
+            max_passes=max_passes,
+            max_moves=max_moves,
+        )
+    elif postprocessing == "star_form_new_cluster":
+        ls_result = refine_partition_star_form_new_cluster(
+            G=G,
+            partition=start_partition,
+            max_passes=max_passes,
+            max_moves=max_moves,
+        )
     else:
         raise ValueError(f"Unknown postprocessing: {postprocessing}")
 
@@ -146,10 +181,8 @@ def run_single_algorithm(
         "start_num_clusters": start_num_clusters,
         "final_num_clusters": final_num_clusters,
         "delta_num_clusters": final_num_clusters - start_num_clusters,
-        "start_min_cluster": min(start_sizes) if start_sizes else 0,
         "start_max_cluster": max(start_sizes) if start_sizes else 0,
         "start_avg_cluster": statistics.mean(start_sizes) if start_sizes else 0.0,
-        "final_min_cluster": min(final_sizes) if final_sizes else 0,
         "final_max_cluster": max(final_sizes) if final_sizes else 0,
         "final_avg_cluster": statistics.mean(final_sizes) if final_sizes else 0.0,
         "runtime_ls_ms": runtime_ls_ms,
@@ -206,6 +239,11 @@ def main() -> None:
         "move_best",
         "merge_first",
         "merge_best",
+        "merge_max_intercluster_edges",
+        "merge_max_boundary_density",
+        "split_min_cut",
+        "star_absorb_singletons",
+        "star_form_new_cluster",
     ]
 
     results: list[dict[str, Any]] = []

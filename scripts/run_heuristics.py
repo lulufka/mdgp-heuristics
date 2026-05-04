@@ -14,8 +14,9 @@ from mdgp.adapters.external.leiden import (
     leiden_modularity_partition,
 )
 from mdgp.adapters.leiden_kapoce import leiden_mdgp_kapoce_partition
+from mdgp.adapters.local_search import build_matching_local_search_algorithm
 from mdgp.adapters.matching import matching_partition
-from mdgp.analysis.tables import highlight_top2_density_multiindex
+from mdgp.analysis.tables import highlight_top2_density_multiindex, highlight_beats_kapoce
 from mdgp.config import KAPOCE_CONFIG, KAPOCE_EXECUTABLE
 from mdgp.core.evaluation import (
     partition_cluster_sizes,
@@ -55,10 +56,101 @@ def evaluate_algorithm(
         "time": elapsed_time,
         "density": partition_density(G, partition),
         "num": partition_num_clusters(partition),
-        "min": min(cluster_sizes),
         "max": max(cluster_sizes),
         "avg": sum(cluster_sizes) / len(cluster_sizes),
     }
+
+
+def build_algorithms() -> list[tuple[str, Callable[[nx.Graph], Partition]]]:
+    kapoce_heuristic = partial(
+        kapoce_partition,
+        executable_path=KAPOCE_EXECUTABLE,
+        config_path=KAPOCE_CONFIG,
+    )
+
+
+    local_search_pipelines = [
+        # einfache Baselines
+        ("move first", "move_first"),
+        ("move best", "move_best"),
+        ("merge first", "merge_first"),
+        ("merge best", "merge_best"),
+
+        # klassische Kombinationen
+        ("move first -> merge best", "move_first,merge_best"),
+        ("move best -> merge best", "move_best,merge_best"),
+        ("merge best -> move first", "merge_best,move_first"),
+        ("merge first -> move first", "merge_first,move_first"),
+
+        # move-merge-move: nach Merge nochmal feinjustieren
+        ("move first -> merge best -> move first", "move_first,merge_best,move_first"),
+        ("move best -> merge best -> move first", "move_best,merge_best,move_first"),
+        ("move first -> merge first -> move first", "move_first,merge_first,move_first"),
+
+        # split als Reparatur nach Merge
+        ("move first -> merge best -> split min cut", "move_first,merge_best,split_min_cut"),
+        ("move first -> merge best -> split min cut -> move first", "move_first,merge_best,split_min_cut,move_first"),
+        ("move first -> merge best -> split min cut -> merge best", "move_first,merge_best,split_min_cut,merge_best"),
+        ("move first -> merge best -> split min cut -> merge best -> move first",
+         "move_first,merge_best,split_min_cut,merge_best,move_first"),
+
+        # alternative Merge-Kriterien
+        ("move first -> merge max boundary density -> move first",
+         "move_first,merge_max_boundary_density,move_first"),
+        ("move first -> merge max intercluster edges -> move first",
+         "move_first,merge_max_intercluster_edges,move_first"),
+
+        # star-Operatoren isoliert nach move
+        ("move first -> star absorb singletons", "move_first,star_absorb_singletons"),
+        ("move first -> star form new cluster", "move_first,star_form_new_cluster"),
+
+        # star als Ergänzung vor Merge
+        ("move first -> star absorb singletons -> merge best -> move first",
+         "move_first,star_absorb_singletons,merge_best,move_first"),
+        ("move first -> star form new cluster -> merge best -> move first",
+         "move_first,star_form_new_cluster,merge_best,move_first"),
+
+        # star nach Merge, um übrig gebliebene Singletons einzusammeln
+        ("move first -> merge best -> star absorb singletons -> move first",
+         "move_first,merge_best,star_absorb_singletons,move_first"),
+        ("move first -> merge best -> star form new cluster -> move first",
+         "move_first,merge_best,star_form_new_cluster,move_first"),
+
+        # volle Repair-Pipelines
+        ("move first -> merge best -> split min cut -> star absorb singletons -> move first",
+         "move_first,merge_best,split_min_cut,star_absorb_singletons,move_first"),
+        ("move first -> merge best -> split min cut -> star form new cluster -> move first",
+         "move_first,merge_best,split_min_cut,star_form_new_cluster,move_first"),
+
+        # best/first Vergleich für zentrale Pipeline
+        ("move best -> merge best -> split min cut -> move first",
+         "move_best,merge_best,split_min_cut,move_first"),
+        ("move first -> merge first -> split min cut -> move first",
+         "move_first,merge_first,split_min_cut,move_first"),
+    ]
+
+
+    local_search_algorithms = [
+        (name, build_matching_local_search_algorithm(pipeline))
+        for name, pipeline in local_search_pipelines
+    ]
+    '''
+    return [
+        ("matching", matching_partition),
+        *local_search_algorithms,
+        ("greedy", greedy_partition),
+        ("leiden modularity", leiden_modularity_partition),
+        ("leiden mdgp", leiden_mdgp_partition),
+        ("kapoce", kapoce_heuristic),
+        ("leiden with kapoce", leiden_mdgp_kapoce_partition),
+    ]
+    '''
+    return [
+        *local_search_algorithms,
+        ("leiden mdgp", leiden_mdgp_partition),
+        ("kapoce", kapoce_heuristic),
+        ("leiden with kapoce", leiden_mdgp_kapoce_partition),
+    ]
 
 
 def main() -> None:
@@ -89,20 +181,7 @@ def main() -> None:
 
     dataset_name = args.dataset_name if args.dataset_name else data_dir.name
 
-    kapoce_heuristic = partial(
-        kapoce_partition,
-        executable_path=KAPOCE_EXECUTABLE,
-        config_path=KAPOCE_CONFIG,
-    )
-
-    algorithms: list[tuple[str, Callable[[nx.Graph], Partition]]] = [
-        ("matching", matching_partition),
-        ("greedy", greedy_partition),
-        ("leiden modularity", leiden_modularity_partition),
-        ("leiden mdgp", leiden_mdgp_partition),
-        ("kapoce", kapoce_heuristic),
-        ("leiden with kapoce", leiden_mdgp_kapoce_partition),
-    ]
+    algorithms = build_algorithms()
 
     instances = load_instances(data_dir)
     results: list[dict[str, Any]] = []
@@ -125,7 +204,7 @@ def main() -> None:
             results.append(result)
 
     df = pd.DataFrame(results)
-    metrics = ["density", "num", "min", "max", "avg"]
+    metrics = ["density", "num", "max", "avg"]
 
     pivot = df.set_index(["instance", "algorithm"])[metrics].unstack("algorithm")
     pivot = pivot.swaplevel(axis=1).sort_index(axis=1, level=0)
@@ -146,9 +225,21 @@ def main() -> None:
     pivot.to_csv(csv_path)
     print(f"\nSaved CSV results to {csv_path}")
 
+    kapoce_summary = build_kapoce_comparison_summary(df).round(2)
+
+    kapoce_summary_path = results_dir / f"{dataset_name}_beats_kapoce_summary.csv"
+    kapoce_summary.to_csv(kapoce_summary_path, index=False)
+    print(f"Saved KapoCE comparison summary to {kapoce_summary_path}")
+
+    kapoce_summary_html_path = results_dir / f"{dataset_name}_beats_kapoce_summary.html"
+    kapoce_summary.to_html(kapoce_summary_html_path, index=False)
+    print(f"Saved KapoCE comparison HTML to {kapoce_summary_html_path}")
+
     html_path = results_dir / f"{dataset_name}_metrics_table.html"
     styled = (
-        pivot.style.apply(highlight_top2_density_multiindex, axis=None)
+        pivot.style
+        .apply(highlight_top2_density_multiindex, axis=None)
+        .apply(highlight_beats_kapoce, axis=None)
         .format(precision=1)
         .set_table_styles(
             [
@@ -160,6 +251,37 @@ def main() -> None:
     )
     styled.to_html(html_path)
     print(f"Saved HTML results to {html_path}")
+
+def build_kapoce_comparison_summary(df: pd.DataFrame) -> pd.DataFrame:
+    kapoce_scores = (
+        df[df["algorithm"] == "kapoce"]
+        .set_index("instance")["density"]
+        .rename("kapoce_density")
+    )
+
+    comparison = df.join(kapoce_scores, on="instance")
+    comparison["beats_kapoce"] = comparison["density"] > comparison["kapoce_density"]
+    comparison["ties_kapoce"] = comparison["density"] == comparison["kapoce_density"]
+
+    summary = (
+        comparison.groupby("algorithm")
+        .agg(
+            runs=("instance", "count"),
+            beats_kapoce=("beats_kapoce", "sum"),
+            ties_kapoce=("ties_kapoce", "sum"),
+            mean_density=("density", "mean"),
+            mean_kapoce_density=("kapoce_density", "mean"),
+        )
+        .reset_index()
+    )
+
+    summary["beats_kapoce_percent"] = 100 * summary["beats_kapoce"] / summary["runs"]
+    summary["mean_gap_to_kapoce"] = summary["mean_density"] - summary["mean_kapoce_density"]
+
+    return summary.sort_values(
+        ["beats_kapoce", "mean_gap_to_kapoce"],
+        ascending=[False, False],
+    )
 
 
 if __name__ == "__main__":

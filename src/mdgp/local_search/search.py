@@ -6,8 +6,12 @@ import networkx as nx
 
 from mdgp.core.evaluation import partition_density
 from mdgp.core.types import Partition
-from mdgp.local_search.megre import first_improving_merge_pair, apply_merge_clusters, best_merge_pair
+from mdgp.local_search.merge import first_improving_merge_pair, apply_merge_clusters, best_merge_pair, \
+    max_intercluster_edges_pair, max_boundary_density_pair
 from mdgp.local_search.move import best_move_for_node, apply_move_node
+from mdgp.local_search.split import split_disconnected_clusters, best_min_cut_split, apply_split
+from mdgp.local_search.star import best_absorb_singleton_leaves_pair, apply_absorb_singleton_leaves_into_center_cluster, \
+    best_form_star_from_singleton_leaves_pair, apply_form_star_from_center_and_singleton_leaves
 from mdgp.local_search.state import build_partition_state
 
 
@@ -223,4 +227,165 @@ def refine_partition_merge_best_improvement(
         num_moves=merge_count,
         num_passes=used_passes,
         final_score=partition_density(G, final_partition),
+    )
+
+def refine_partition_merge_max_intercluster_edges(
+        G: nx.Graph,
+        partition: Partition,
+        max_passes: int = 20,
+        max_moves: Optional[int] = None
+) -> LocalSearchResult:
+    state = build_partition_state(G, partition)
+
+    merge_count = 0
+    used_passes = 0
+
+    for _ in range(max_passes):
+        if max_moves is not None and merge_count >= max_moves:
+            break
+
+        used_passes += 1
+
+        pair, delta = max_intercluster_edges_pair(state)
+
+        if pair is None or delta <= 0:
+            break
+
+        a, b = pair
+        apply_merge_clusters(state, a, b)
+        merge_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=merge_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
+    )
+
+def refine_partition_merge_max_boundary_density(
+        G: nx.Graph,
+        partition: Partition,
+        max_passes: int = 20,
+        max_moves: Optional[int] = None
+) -> LocalSearchResult:
+    state = build_partition_state(G, partition)
+
+    merge_count = 0
+    used_passes = 0
+
+    for _ in range(max_passes):
+        if max_moves is not None and merge_count >= max_moves:
+            break
+
+        used_passes += 1
+
+        pair, delta = max_boundary_density_pair(state)
+
+        if pair is None or delta <= 0:
+            break
+
+        a, b = pair
+        apply_merge_clusters(state, a, b)
+        merge_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=merge_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
+    )
+
+
+def refine_partition_split_min_cut(
+        G: nx.Graph,
+        partition: Partition,
+        max_passes: int = 20,
+) -> LocalSearchResult:
+    state = build_partition_state(G, partition)
+
+    split_count = 0
+    used_passes = 0
+
+    split_disconnected_clusters(state)
+
+    for _ in range(max_passes):
+        used_passes += 1
+
+        best, delta = best_min_cut_split(state)
+
+        if best is None or delta <= 0:
+            break
+
+        cluster_idx, a, b = best
+        apply_split(state, cluster_idx, a, b)
+        split_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=split_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
+    )
+
+def refine_partition_star_absorb_singletons(G: nx.Graph, partition: Partition, max_passes: int = 20, max_moves: Optional[int] = None, min_leaves: int = 2) -> LocalSearchResult:
+    state = build_partition_state(G, partition)
+
+    operation_count = 0
+    used_passes = 0
+
+    for _ in range(max_passes):
+        if max_moves is not None and operation_count >= max_moves:
+            break
+
+        used_passes += 1
+
+        candidate, delta = best_absorb_singleton_leaves_pair(state, min_leaves)
+
+        if candidate is None or delta <= 0:
+            break
+
+        center, leaves = candidate
+        apply_absorb_singleton_leaves_into_center_cluster(state, center, leaves)
+        operation_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=operation_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition)
+    )
+
+def refine_partition_star_form_new_cluster(G: nx.Graph, partition: Partition, max_passes: int = 20, max_moves: Optional[int] = None, min_leaves: int = 2) -> LocalSearchResult:
+    state = build_partition_state(G, partition)
+
+    operation_count = 0
+    used_passes = 0
+
+    for _ in range(max_passes):
+        if max_moves is not None and operation_count >= max_moves:
+            break
+
+        used_passes += 1
+
+        candidate, delta = best_form_star_from_singleton_leaves_pair(state, min_leaves)
+
+        if candidate is None or delta <= 0:
+            break
+
+        center, leaves = candidate
+        apply_form_star_from_center_and_singleton_leaves(state, center, leaves)
+        operation_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=operation_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition)
     )

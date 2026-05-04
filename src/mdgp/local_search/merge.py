@@ -103,14 +103,43 @@ def first_improving_merge_pair(state: PartitionState) -> tuple[Optional[tuple[in
     return None, 0.0
 
 
-def max_intercluster_edges_pair(state: PartitionState) -> tuple[Optional[tuple[int, int]], int]:
+def max_intercluster_edges_pair(state: PartitionState) -> tuple[Optional[tuple[int, int]], float]:
     best_pair: Optional[tuple[int, int]] = None
     best_edges = 0
+    best_delta = 0.0
 
     for a, b in neighboring_cluster_pairs(state):
+        delta = delta_merge_clusters(state, a, b)
+        if delta <= 0:
+            continue
+
         edges_ab = intercluster_edges(state, a, b)
         if edges_ab > best_edges:
             best_edges = edges_ab
             best_pair = (a, b)
+            best_delta = delta
 
-    return best_pair, best_edges
+    return best_pair, best_delta
+
+def max_boundary_density_pair(state: PartitionState) -> tuple[Optional[tuple[int, int]], float]:
+    best_pair: Optional[tuple[int, int]] = None
+    best_boundry_density = 0.0
+    best_delta = 0.0
+
+    for a, b in neighboring_cluster_pairs(state):
+        delta = delta_merge_clusters(state, a, b)
+        if delta <= 0:
+            continue
+
+        edges_ab = intercluster_edges(state, a, b)
+        size_a = state.cluster_sizes[a]
+        size_b = state.cluster_sizes[b]
+
+        boundary_density = edges_ab / (size_a * size_b)
+
+        if boundary_density > best_boundry_density:
+            best_boundry_density = boundary_density
+            best_pair = (a, b)
+            best_delta = delta
+
+    return best_pair, best_delta
