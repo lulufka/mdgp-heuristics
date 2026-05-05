@@ -1,21 +1,17 @@
 import argparse
 import time
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Callable, Any
+from typing import Any, Callable
 
 import networkx as nx
 import pandas as pd
 
-from mdgp.adapters.densest_subgraph import greedy_partition
 from mdgp.adapters.external.kapoce import kapoce_partition
-from mdgp.adapters.external.leiden import (
-    leiden_mdgp_partition,
-    leiden_modularity_partition,
-)
+from mdgp.adapters.external.leiden import leiden_mdgp_partition
 from mdgp.adapters.leiden_kapoce import leiden_mdgp_kapoce_partition
-from mdgp.adapters.local_search import build_matching_local_search_algorithm
-from mdgp.adapters.matching import matching_partition
+from mdgp.adapters.local_search import build_local_search_algorithm
 from mdgp.analysis.tables import highlight_top2_density_multiindex, highlight_beats_kapoce
 from mdgp.config import KAPOCE_CONFIG, KAPOCE_EXECUTABLE
 from mdgp.core.evaluation import (
@@ -25,6 +21,13 @@ from mdgp.core.evaluation import (
 )
 from mdgp.core.graph_io import load_instances
 from mdgp.core.types import Partition
+
+
+@dataclass(frozen=True)
+class LocalSearchExperiment:
+    name: str
+    start_partition: str
+    pipeline: str
 
 
 def evaluate_algorithm(
@@ -68,83 +71,92 @@ def build_algorithms() -> list[tuple[str, Callable[[nx.Graph], Partition]]]:
         config_path=KAPOCE_CONFIG,
     )
 
-
-    local_search_pipelines = [
-        # einfache Baselines
-        ("move first", "move_first"),
-        ("move best", "move_best"),
-        ("merge first", "merge_first"),
-        ("merge best", "merge_best"),
-
-        # klassische Kombinationen
-        ("move first -> merge best", "move_first,merge_best"),
-        ("move best -> merge best", "move_best,merge_best"),
-        ("merge best -> move first", "merge_best,move_first"),
-        ("merge first -> move first", "merge_first,move_first"),
-
-        # move-merge-move: nach Merge nochmal feinjustieren
-        ("move first -> merge best -> move first", "move_first,merge_best,move_first"),
-        ("move best -> merge best -> move first", "move_best,merge_best,move_first"),
-        ("move first -> merge first -> move first", "move_first,merge_first,move_first"),
-
-        # split als Reparatur nach Merge
-        ("move first -> merge best -> split min cut", "move_first,merge_best,split_min_cut"),
-        ("move first -> merge best -> split min cut -> move first", "move_first,merge_best,split_min_cut,move_first"),
-        ("move first -> merge best -> split min cut -> merge best", "move_first,merge_best,split_min_cut,merge_best"),
-        ("move first -> merge best -> split min cut -> merge best -> move first",
-         "move_first,merge_best,split_min_cut,merge_best,move_first"),
-
-        # alternative Merge-Kriterien
-        ("move first -> merge max boundary density -> move first",
-         "move_first,merge_max_boundary_density,move_first"),
-        ("move first -> merge max intercluster edges -> move first",
-         "move_first,merge_max_intercluster_edges,move_first"),
-
-        # star-Operatoren isoliert nach move
-        ("move first -> star absorb singletons", "move_first,star_absorb_singletons"),
-        ("move first -> star form new cluster", "move_first,star_form_new_cluster"),
-
-        # star als Ergänzung vor Merge
-        ("move first -> star absorb singletons -> merge best -> move first",
-         "move_first,star_absorb_singletons,merge_best,move_first"),
-        ("move first -> star form new cluster -> merge best -> move first",
-         "move_first,star_form_new_cluster,merge_best,move_first"),
-
-        # star nach Merge, um übrig gebliebene Singletons einzusammeln
-        ("move first -> merge best -> star absorb singletons -> move first",
-         "move_first,merge_best,star_absorb_singletons,move_first"),
-        ("move first -> merge best -> star form new cluster -> move first",
-         "move_first,merge_best,star_form_new_cluster,move_first"),
-
-        # volle Repair-Pipelines
-        ("move first -> merge best -> split min cut -> star absorb singletons -> move first",
-         "move_first,merge_best,split_min_cut,star_absorb_singletons,move_first"),
-        ("move first -> merge best -> split min cut -> star form new cluster -> move first",
-         "move_first,merge_best,split_min_cut,star_form_new_cluster,move_first"),
-
-        # best/first Vergleich für zentrale Pipeline
-        ("move best -> merge best -> split min cut -> move first",
-         "move_best,merge_best,split_min_cut,move_first"),
-        ("move first -> merge first -> split min cut -> move first",
-         "move_first,merge_first,split_min_cut,move_first"),
+    local_search_experiments = [
+        LocalSearchExperiment("singleton | merge first", "singleton", "merge_first"),
+        LocalSearchExperiment("singleton | merge best", "singleton", "merge_best"),
+        LocalSearchExperiment(
+            "singleton | merge best -> move first",
+            "singleton",
+            "merge_best,move_first",
+        ),
+        LocalSearchExperiment(
+            "singleton | merge first -> move first",
+            "singleton",
+            "merge_first,move_first",
+        ),
+        LocalSearchExperiment(
+            "singleton | merge best -> split min cut -> move first",
+            "singleton",
+            "merge_best,split_min_cut,move_first",
+        ),
+        LocalSearchExperiment(
+            "singleton | merge best -> split min cut -> merge best -> move first",
+            "singleton",
+            "merge_best,split_min_cut,merge_best,move_first",
+        ),
+        LocalSearchExperiment(
+            "singleton | merge max boundary density -> move first",
+            "singleton",
+            "merge_max_boundary_density,move_first",
+        ),
+        LocalSearchExperiment(
+            "singleton | merge max intercluster edges -> move first",
+            "singleton",
+            "merge_max_intercluster_edges,move_first",
+        ),
+        LocalSearchExperiment(
+            "singleton | merge best -> star absorb singletons -> move first",
+            "singleton",
+            "merge_best,star_absorb_singletons,move_first",
+        ),
+        LocalSearchExperiment(
+            "singleton | merge best -> star form new cluster -> move first",
+            "singleton",
+            "merge_best,star_form_new_cluster,move_first",
+        ),
+        LocalSearchExperiment(
+            "all in one | split min cut",
+            "all_in_one",
+            "split_min_cut",
+        ),
+        LocalSearchExperiment(
+            "all in one | split min cut -> move first",
+            "all_in_one",
+            "split_min_cut,move_first",
+        ),
+        LocalSearchExperiment(
+            "all in one | split min cut -> merge best",
+            "all_in_one",
+            "split_min_cut,merge_best",
+        ),
+        LocalSearchExperiment(
+            "all in one | split min cut -> merge best -> move first",
+            "all_in_one",
+            "split_min_cut,merge_best,move_first",
+        ),
+        LocalSearchExperiment(
+            "all in one | split min cut -> star absorb singletons -> move first",
+            "all_in_one",
+            "split_min_cut,star_absorb_singletons,move_first",
+        ),
+        LocalSearchExperiment(
+            "all in one | split min cut -> star form new cluster -> move first",
+            "all_in_one",
+            "split_min_cut,star_form_new_cluster,move_first",
+        ),
     ]
-
 
     local_search_algorithms = [
-        (name, build_matching_local_search_algorithm(pipeline))
-        for name, pipeline in local_search_pipelines
+        (
+            experiment.name,
+            build_local_search_algorithm(
+                experiment.pipeline,
+                experiment.start_partition,
+            ),
+        )
+        for experiment in local_search_experiments
     ]
-    '''
-    return [
-        ("matching", matching_partition),
-        *local_search_algorithms,
-        ("greedy", greedy_partition),
-        ("leiden modularity", leiden_modularity_partition),
-        ("leiden mdgp", leiden_mdgp_partition),
-        ("kapoce", kapoce_heuristic),
-        ("leiden with kapoce", leiden_mdgp_kapoce_partition),
-    ]
-    '''
+
     return [
         *local_search_algorithms,
         ("leiden mdgp", leiden_mdgp_partition),

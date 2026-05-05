@@ -9,7 +9,7 @@ from typing import Callable
 import networkx as nx
 
 from mdgp.adapters.densest_subgraph import greedy_partition
-from mdgp.adapters.local_search import build_matching_local_search_algorithm
+from mdgp.adapters.local_search import build_local_search_algorithm
 from mdgp.adapters.matching import matching_partition
 from mdgp.analysis.visualization import (
     write_partition_comparison_svg,
@@ -64,6 +64,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="move_first,merge_first,split_min_cut",
         help="Local-search pipeline used with --algorithm matching_local_search.",
+    )
+    parser.add_argument(
+        "--start-partition",
+        choices=["matching", "singleton", "all_in_one"],
+        default="matching",
+        help="Start partition used with --algorithm matching_local_search.",
     )
     parser.add_argument(
         "--output-dir",
@@ -121,7 +127,7 @@ def select_instances(
     return selected
 
 
-def build_algorithm(name: str, pipeline: str) -> Algorithm:
+def build_algorithm(name: str, pipeline: str, start_partition: str) -> Algorithm:
     if name == "matching":
         return matching_partition
     if name == "greedy":
@@ -139,7 +145,7 @@ def build_algorithm(name: str, pipeline: str) -> Algorithm:
 
         return leiden_mdgp_kapoce_partition
     if name == "matching_local_search":
-        return build_matching_local_search_algorithm(pipeline)
+        return build_local_search_algorithm(pipeline, start_partition)
     if name == "kapoce":
         from mdgp.adapters.external.kapoce import kapoce_partition
         from mdgp.config import KAPOCE_CONFIG, KAPOCE_EXECUTABLE
@@ -157,9 +163,9 @@ def safe_filename(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("_")
 
 
-def display_name(algorithm_name: str, pipeline: str) -> str:
+def display_name(algorithm_name: str, pipeline: str, start_partition: str) -> str:
     if algorithm_name == "matching_local_search":
-        return f"{algorithm_name} | {pipeline}"
+        return f"{algorithm_name} | {start_partition} | {pipeline}"
     return algorithm_name
 
 
@@ -169,13 +175,14 @@ def write_single_algorithm_svg(
     algorithm: Algorithm,
     output_dir: Path,
     pipeline: str,
+    start_partition: str,
     seed: int,
     show_labels: bool,
 ) -> Path:
     partition = algorithm(instance.G)
     filename = safe_filename(f"{instance.name}_{algorithm_name}.svg")
     output_path = output_dir / filename
-    title = f"{instance.name} | {display_name(algorithm_name, pipeline)}"
+    title = f"{instance.name} | {display_name(algorithm_name, pipeline, start_partition)}"
 
     write_partition_svg(
         instance.G,
@@ -193,6 +200,7 @@ def write_comparison_svg(
     algorithm_names: list[str],
     output_dir: Path,
     pipeline: str,
+    start_partition: str,
     seed: int,
     show_labels: bool,
 ) -> Path:
@@ -200,8 +208,8 @@ def write_comparison_svg(
         raise ValueError("--compare requires exactly two --algorithm values.")
 
     left_name, right_name = algorithm_names
-    left_partition = build_algorithm(left_name, pipeline)(instance.G)
-    right_partition = build_algorithm(right_name, pipeline)(instance.G)
+    left_partition = build_algorithm(left_name, pipeline, start_partition)(instance.G)
+    right_partition = build_algorithm(right_name, pipeline, start_partition)(instance.G)
     filename = safe_filename(f"{instance.name}_{left_name}_vs_{right_name}.svg")
     output_path = output_dir / filename
 
@@ -211,8 +219,8 @@ def write_comparison_svg(
         right_partition,
         output_path,
         title=f"{instance.name} | partition comparison",
-        left_title=display_name(left_name, pipeline),
-        right_title=display_name(right_name, pipeline),
+        left_title=display_name(left_name, pipeline, start_partition),
+        right_title=display_name(right_name, pipeline, start_partition),
         seed=seed,
         show_labels=show_labels,
     )
@@ -237,6 +245,7 @@ def main() -> None:
                 algorithm_names,
                 output_dir,
                 args.pipeline,
+                args.start_partition,
                 args.seed,
                 not args.hide_labels,
             )
@@ -244,13 +253,18 @@ def main() -> None:
             continue
 
         for algorithm_name in algorithm_names:
-            algorithm = build_algorithm(algorithm_name, args.pipeline)
+            algorithm = build_algorithm(
+                algorithm_name,
+                args.pipeline,
+                args.start_partition,
+            )
             output_path = write_single_algorithm_svg(
                 instance,
                 algorithm_name,
                 algorithm,
                 output_dir,
                 args.pipeline,
+                args.start_partition,
                 args.seed,
                 not args.hide_labels,
             )

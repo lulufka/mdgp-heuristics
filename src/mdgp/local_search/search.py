@@ -29,7 +29,7 @@ class LocalSearchResult:
 def refine_partition_move_first_improvement(
     G: nx.Graph,
     partition: Partition,
-    max_passes: int = 20,
+    max_passes: int = 2000,
     max_moves: Optional[int] = None,
     random_seed: Optional[int] = None,
     shuffle_nodes: bool = True,
@@ -98,7 +98,7 @@ def refine_partition_move_first_improvement(
 def refine_partition_move_best_improvement(
     G: nx.Graph,
     partition: Partition,
-    max_passes: int = 20,
+    max_passes: int = 2000,
     max_moves: Optional[int] = None,
     random_seed: Optional[int] = None,
     shuffle_nodes: bool = True,
@@ -161,10 +161,11 @@ def refine_partition_move_best_improvement(
         final_score=partition_density(G, final_partition),
     )
 
+
 def refine_partition_merge_first_improvement(
         G: nx.Graph,
         partition: Partition,
-        max_passes: int = 20,
+        max_passes: int = 2000,
         max_moves: Optional[int] = None
 ) -> LocalSearchResult:
     state = build_partition_state(G, partition)
@@ -198,7 +199,7 @@ def refine_partition_merge_first_improvement(
 def refine_partition_merge_best_improvement(
         G: nx.Graph,
         partition: Partition,
-        max_passes: int = 20,
+        max_passes: int = 2000,
         max_moves: Optional[int] = None
 ) -> LocalSearchResult:
     state = build_partition_state(G, partition)
@@ -232,7 +233,7 @@ def refine_partition_merge_best_improvement(
 def refine_partition_merge_max_intercluster_edges(
         G: nx.Graph,
         partition: Partition,
-        max_passes: int = 20,
+        max_passes: int = 2000,
         max_moves: Optional[int] = None
 ) -> LocalSearchResult:
     state = build_partition_state(G, partition)
@@ -266,7 +267,7 @@ def refine_partition_merge_max_intercluster_edges(
 def refine_partition_merge_max_boundary_density(
         G: nx.Graph,
         partition: Partition,
-        max_passes: int = 20,
+        max_passes: int = 2000,
         max_moves: Optional[int] = None
 ) -> LocalSearchResult:
     state = build_partition_state(G, partition)
@@ -301,7 +302,8 @@ def refine_partition_merge_max_boundary_density(
 def refine_partition_split_min_cut(
         G: nx.Graph,
         partition: Partition,
-        max_passes: int = 20,
+        max_passes: int = 2000,
+        max_moves: Optional[int] = None
 ) -> LocalSearchResult:
     state = build_partition_state(G, partition)
 
@@ -330,7 +332,7 @@ def refine_partition_split_min_cut(
         final_score=partition_density(G, final_partition),
     )
 
-def refine_partition_star_absorb_singletons(G: nx.Graph, partition: Partition, max_passes: int = 20, max_moves: Optional[int] = None, min_leaves: int = 2) -> LocalSearchResult:
+def refine_partition_star_absorb_singletons(G: nx.Graph, partition: Partition, max_passes: int = 2000, max_moves: Optional[int] = None, min_leaves: int = 2) -> LocalSearchResult:
     state = build_partition_state(G, partition)
 
     operation_count = 0
@@ -360,7 +362,7 @@ def refine_partition_star_absorb_singletons(G: nx.Graph, partition: Partition, m
         final_score=partition_density(G, final_partition)
     )
 
-def refine_partition_star_form_new_cluster(G: nx.Graph, partition: Partition, max_passes: int = 20, max_moves: Optional[int] = None, min_leaves: int = 2) -> LocalSearchResult:
+def refine_partition_star_form_new_cluster(G: nx.Graph, partition: Partition, max_passes: int = 2000, max_moves: Optional[int] = None, min_leaves: int = 2) -> LocalSearchResult:
     state = build_partition_state(G, partition)
 
     operation_count = 0

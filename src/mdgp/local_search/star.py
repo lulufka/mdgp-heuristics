@@ -57,6 +57,11 @@ def apply_absorb_singleton_leaves_into_center_cluster(state: PartitionState, cen
     added_edges_inside_leaves = internal_edges_of_set(state, leaves)
 
     for leaf in leaves:
+        leaf_cluster = state.cluster_of[leaf]
+        state.clusters[leaf_cluster].remove(leaf)
+        state.cluster_sizes[leaf_cluster] = 0
+        state.internal_edges[leaf_cluster] = 0
+
         state.clusters[center_cluster].add(leaf)
         state.cluster_of[leaf] = center_cluster
 
