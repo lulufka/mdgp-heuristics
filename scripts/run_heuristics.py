@@ -64,7 +64,9 @@ def evaluate_algorithm(
     }
 
 
-def build_algorithms() -> list[tuple[str, Callable[[nx.Graph], Partition]]]:
+def build_algorithms(
+    random_seed: int | None = None,
+) -> list[tuple[str, Callable[[nx.Graph], Partition]]]:
     kapoce_heuristic = partial(
         kapoce_partition,
         executable_path=KAPOCE_EXECUTABLE,
@@ -72,22 +74,40 @@ def build_algorithms() -> list[tuple[str, Callable[[nx.Graph], Partition]]]:
     )
 
     local_search_experiments = [
-        LocalSearchExperiment("singleton | merge first", "singleton", "merge_first"),
-        LocalSearchExperiment("singleton | merge best", "singleton", "merge_best"),
+        LocalSearchExperiment(
+            "singleton | merge best",
+            "singleton",
+            "merge_best",
+        ),
         LocalSearchExperiment(
             "singleton | merge best -> move first",
             "singleton",
             "merge_best,move_first",
         ),
         LocalSearchExperiment(
-            "singleton | merge first -> move first",
+            "singleton | merge best -> move best",
             "singleton",
-            "merge_first,move_first",
+            "merge_best,move_best",
         ),
         LocalSearchExperiment(
-            "singleton | merge best -> split min cut -> move first",
+            "singleton | merge best -> move first -> merge best",
             "singleton",
-            "merge_best,split_min_cut,move_first",
+            "merge_best,move_first,merge_best",
+        ),
+        LocalSearchExperiment(
+            "singleton | merge best -> move first -> merge best -> move first",
+            "singleton",
+            "merge_best,move_first,merge_best,move_first",
+        ),
+        LocalSearchExperiment(
+            "singleton | merge best -> move best -> merge best -> move first",
+            "singleton",
+            "merge_best,move_best,merge_best,move_first",
+        ),
+        LocalSearchExperiment(
+            "singleton | merge best -> move first -> split min cut -> merge best -> move first",
+            "singleton",
+            "merge_best,move_first,split_min_cut,merge_best,move_first",
         ),
         LocalSearchExperiment(
             "singleton | merge best -> split min cut -> merge best -> move first",
@@ -95,39 +115,39 @@ def build_algorithms() -> list[tuple[str, Callable[[nx.Graph], Partition]]]:
             "merge_best,split_min_cut,merge_best,move_first",
         ),
         LocalSearchExperiment(
-            "singleton | merge max boundary density -> move first",
+            "singleton | merge max boundary density -> move first -> merge best",
             "singleton",
-            "merge_max_boundary_density,move_first",
+            "merge_max_boundary_density,move_first,merge_best",
         ),
         LocalSearchExperiment(
-            "singleton | merge max intercluster edges -> move first",
+            "singleton | merge max intercluster edges -> move first -> merge best",
             "singleton",
-            "merge_max_intercluster_edges,move_first",
+            "merge_max_intercluster_edges,move_first,merge_best",
         ),
         LocalSearchExperiment(
-            "singleton | merge best -> star absorb singletons -> move first",
+            "singleton | merge best -> move first -> star absorb singletons -> move first",
             "singleton",
-            "merge_best,star_absorb_singletons,move_first",
+            "merge_best,move_first,star_absorb_singletons,move_first",
         ),
         LocalSearchExperiment(
-            "singleton | merge best -> star form new cluster -> move first",
+            "singleton | merge best -> move first -> star form new cluster -> move first",
             "singleton",
-            "merge_best,star_form_new_cluster,move_first",
+            "merge_best,move_first,star_form_new_cluster,move_first",
         ),
         LocalSearchExperiment(
-            "all in one | split min cut",
-            "all_in_one",
-            "split_min_cut",
+            "singleton | merge best -> move first -> star absorb singletons -> merge best -> move first",
+            "singleton",
+            "merge_best,move_first,star_absorb_singletons,merge_best,move_first",
         ),
         LocalSearchExperiment(
-            "all in one | split min cut -> move first",
-            "all_in_one",
-            "split_min_cut,move_first",
+            "matching | move first -> merge best -> move first",
+            "matching",
+            "move_first,merge_best,move_first",
         ),
         LocalSearchExperiment(
-            "all in one | split min cut -> merge best",
-            "all_in_one",
-            "split_min_cut,merge_best",
+            "matching | merge best -> move first",
+            "matching",
+            "merge_best,move_first",
         ),
         LocalSearchExperiment(
             "all in one | split min cut -> merge best -> move first",
@@ -135,14 +155,34 @@ def build_algorithms() -> list[tuple[str, Callable[[nx.Graph], Partition]]]:
             "split_min_cut,merge_best,move_first",
         ),
         LocalSearchExperiment(
-            "all in one | split min cut -> star absorb singletons -> move first",
-            "all_in_one",
-            "split_min_cut,star_absorb_singletons,move_first",
+            "singleton | merge best -> move best -> merge best -> move best",
+            "singleton",
+            "merge_best,move_best,merge_best,move_best",
         ),
         LocalSearchExperiment(
-            "all in one | split min cut -> star form new cluster -> move first",
-            "all_in_one",
-            "split_min_cut,star_form_new_cluster,move_first",
+            "singleton | merge best -> move best -> merge best -> move first -> merge best",
+            "singleton",
+            "merge_best,move_best,merge_best,move_first,merge_best",
+        ),
+        LocalSearchExperiment(
+            "singleton | merge best -> move first -> move best -> merge best -> move first",
+            "singleton",
+            "merge_best,move_first,move_best,merge_best,move_first",
+        ),
+        LocalSearchExperiment(
+            "singleton | merge best -> move best -> star absorb singletons -> merge best -> move first",
+            "singleton",
+            "merge_best,move_best,star_absorb_singletons,merge_best,move_first",
+        ),
+        LocalSearchExperiment(
+            "singleton | merge max boundary density -> move best -> merge best -> move first",
+            "singleton",
+            "merge_max_boundary_density,move_best,merge_best,move_first",
+        ),
+        LocalSearchExperiment(
+            "singleton | merge best -> move best -> split min cut -> merge best -> move first",
+            "singleton",
+            "merge_best,move_best,split_min_cut,merge_best,move_first",
         ),
     ]
 
@@ -152,16 +192,28 @@ def build_algorithms() -> list[tuple[str, Callable[[nx.Graph], Partition]]]:
             build_local_search_algorithm(
                 experiment.pipeline,
                 experiment.start_partition,
+                random_seed=random_seed,
             ),
         )
         for experiment in local_search_experiments
     ]
 
+    leiden_mdgp_heuristic = (
+        partial(leiden_mdgp_partition, random_seed=random_seed)
+        if random_seed is not None
+        else leiden_mdgp_partition
+    )
+    leiden_kapoce_heuristic = (
+        partial(leiden_mdgp_kapoce_partition, random_seed=random_seed)
+        if random_seed is not None
+        else leiden_mdgp_kapoce_partition
+    )
+
     return [
         *local_search_algorithms,
-        ("leiden mdgp", leiden_mdgp_partition),
+        ("leiden mdgp", leiden_mdgp_heuristic),
         ("kapoce", kapoce_heuristic),
-        ("leiden with kapoce", leiden_mdgp_kapoce_partition),
+        ("leiden with kapoce", leiden_kapoce_heuristic),
     ]
 
 
@@ -185,6 +237,12 @@ def main() -> None:
         default=None,
         help="Name of the dataset for the output files (defaults to folder name)",
     )
+    parser.add_argument(
+        "--random-seed",
+        type=int,
+        default=None,
+        help="Seed for randomized local-search steps.",
+    )
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir)
@@ -193,7 +251,7 @@ def main() -> None:
 
     dataset_name = args.dataset_name if args.dataset_name else data_dir.name
 
-    algorithms = build_algorithms()
+    algorithms = build_algorithms(random_seed=args.random_seed)
 
     instances = load_instances(data_dir)
     results: list[dict[str, Any]] = []

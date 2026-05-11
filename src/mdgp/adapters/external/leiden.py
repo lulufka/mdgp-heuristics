@@ -69,7 +69,7 @@ def leiden_modularity_partition(G: nx.Graph) -> Partition:
     return membership_to_partition(partition.membership, node_order)
 
 
-def leiden_mdgp_partition(G: nx.Graph) -> Partition:
+def leiden_mdgp_partition(G: nx.Graph, random_seed: int | None = 42) -> Partition:
     """
     Computes a partition using the Leiden algorithm with the MDGP objective.
 
@@ -84,7 +84,8 @@ def leiden_mdgp_partition(G: nx.Graph) -> Partition:
 
     ig_graph, node_order = nx_to_igraph(G)
     optimiser = leidenalg.Optimiser()
-    optimiser.set_rng_seed(42)
+    if random_seed is not None:
+        optimiser.set_rng_seed(random_seed)
 
     partition = leidenalg.MDGPVertexPartition(ig_graph)
 

@@ -38,7 +38,7 @@ def partition_to_membership(partition: Partition, node_order: list[int]) -> list
     return membership
 
 
-def leiden_mdgp_kapoce_partition(G: nx.Graph) -> Partition:
+def leiden_mdgp_kapoce_partition(G: nx.Graph, random_seed: int | None = 42) -> Partition:
     """
     Computes a partition of the graph using the Leiden algorithm initialized with Kapoce.
 
@@ -61,7 +61,8 @@ def leiden_mdgp_kapoce_partition(G: nx.Graph) -> Partition:
     initial_membership = partition_to_membership(initial_partition, node_order)
 
     optimiser = leidenalg.Optimiser()
-    optimiser.set_rng_seed(42)
+    if random_seed is not None:
+        optimiser.set_rng_seed(random_seed)
 
     partition = leidenalg.MDGPVertexPartition(ig_graph)
     partition.set_membership(initial_membership)

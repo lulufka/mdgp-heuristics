@@ -52,11 +52,23 @@ def run_local_search_pipeline(
     G: nx.Graph,
     partition: Partition,
     refiners: list[LocalSearchRefiner],
+    random_seed: int | None = None,
 ) -> Partition:
     current_partition = partition
 
     for refine in refiners:
-        result = refine(G, current_partition)
+        if refine in (
+            refine_partition_move_first_improvement,
+            refine_partition_move_best_improvement,
+        ):
+            result = refine(
+                G,
+                current_partition,
+                random_seed=random_seed,
+                shuffle_nodes=True,
+            )
+        else:
+            result = refine(G, current_partition)
         current_partition = result.partition
 
     return current_partition
@@ -65,13 +77,19 @@ def run_local_search_pipeline(
 def build_local_search_algorithm(
     pipeline: str,
     start_partition: str = "matching",
+    random_seed: int | None = None,
 ) -> Callable[[nx.Graph], Partition]:
     initial_partitioner = get_initial_partitioner(start_partition)
     refiners = parse_refiners(pipeline)
 
     def algorithm(G: nx.Graph) -> Partition:
         initial_partition = initial_partitioner(G)
-        return run_local_search_pipeline(G, initial_partition, refiners)
+        return run_local_search_pipeline(
+            G,
+            initial_partition,
+            refiners,
+            random_seed=random_seed,
+        )
 
     return algorithm
 

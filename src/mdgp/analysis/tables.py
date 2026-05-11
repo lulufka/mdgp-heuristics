@@ -67,7 +67,7 @@ def highlight_beats_kapoce(data: pd.DataFrame) -> pd.DataFrame:
 
             if value > kapoce_density:
                 styles.loc[instance, col] = (
-                    "background-color: #bd6026; "
+                    "background-color: #f5ccb3; "
                     "font-weight: bold; "
                     "color: black;"
                 )
