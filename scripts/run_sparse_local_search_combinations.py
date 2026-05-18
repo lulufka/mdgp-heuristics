@@ -58,6 +58,8 @@ IMPROVE_STEPS = [
 ]
 
 REPAIR_STEPS = [
+    "sparse_exact_small_split",
+    "sparse_best_peel",
     "sparse_bridge_split",
     "sparse_low_degree_peel",
     "sparse_small_cluster_dissolve",
@@ -128,6 +130,21 @@ DEFAULT_EXPERIMENTS = [
         "singleton | merge best -> move best -> split min cut -> sparse bridge split -> merge best",
         "singleton",
         "merge_best,move_best,split_min_cut,sparse_bridge_split,merge_best",
+    ),
+    PipelineExperiment(
+        "matching | bridge late plus exact vnd",
+        "matching",
+        "move_first,merge_best,sparse_low_degree_move,sparse_pair_move,sparse_small_cluster_dissolve,sparse_ruin_recreate,merge_best,move_first,sparse_bridge_split,merge_best,sparse_exact_small_split,sparse_best_peel,sparse_vnd",
+    ),
+    PipelineExperiment(
+        "matching | vnd repair",
+        "matching",
+        "move_first,merge_best,sparse_vnd",
+    ),
+    PipelineExperiment(
+        "singleton | merge best -> exact split -> best peel -> vnd",
+        "singleton",
+        "merge_best,sparse_exact_small_split,sparse_best_peel,sparse_vnd",
     ),
 ]
 

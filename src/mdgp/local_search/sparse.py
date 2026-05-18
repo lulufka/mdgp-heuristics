@@ -1,4 +1,5 @@
 import random
+from itertools import combinations
 from typing import Optional
 
 import networkx as nx
@@ -258,6 +259,94 @@ def best_small_cluster_dissolve(
 
 def apply_rebuilt_clusters(state: PartitionState, clusters: list[set[int]]) -> None:
     _replace_state(state, clusters)
+
+
+def delta_split_node_set(state: PartitionState, nodes: set[int]) -> float:
+    if not nodes:
+        return float("-inf")
+
+    cluster_idx = state.cluster_of[next(iter(nodes))]
+    if any(state.cluster_of[v] != cluster_idx for v in nodes):
+        return float("-inf")
+
+    cluster = state.clusters[cluster_idx]
+    if len(nodes) >= len(cluster):
+        return float("-inf")
+
+    complement = cluster - nodes
+    old_score = state.internal_edges[cluster_idx] / state.cluster_sizes[cluster_idx]
+    new_score = (
+        _edges_inside_nodes(state, nodes) / len(nodes)
+        + _edges_inside_nodes(state, complement) / len(complement)
+    )
+
+    return new_score - old_score
+
+
+def best_exact_small_split(
+    state: PartitionState,
+    *,
+    max_cluster_size: int = 10,
+    random_seed: int | None = None,
+) -> tuple[Optional[tuple[int, set[int], set[int]]], float]:
+    cluster_indices = [
+        idx
+        for idx, size in enumerate(state.cluster_sizes)
+        if 2 <= size <= max_cluster_size
+    ]
+    if random_seed is not None:
+        random.Random(random_seed).shuffle(cluster_indices)
+
+    best: Optional[tuple[int, set[int], set[int]]] = None
+    best_delta = 0.0
+
+    for cluster_idx in cluster_indices:
+        nodes = list(state.clusters[cluster_idx])
+        if random_seed is not None:
+            random.Random(random_seed + cluster_idx).shuffle(nodes)
+
+        # Enumerate one side only: S and C-S are the same split.
+        max_subset_size = len(nodes) // 2
+        for subset_size in range(1, max_subset_size + 1):
+            if subset_size == len(nodes) - subset_size:
+                subset_iter = combinations(nodes[1:], subset_size - 1)
+                subsets = ({nodes[0], *subset} for subset in subset_iter)
+            else:
+                subsets = (set(subset) for subset in combinations(nodes, subset_size))
+
+            for a in subsets:
+                b = state.clusters[cluster_idx] - a
+                delta = delta_split_node_set(state, a)
+                if delta > best_delta:
+                    best = (cluster_idx, set(a), set(b))
+                    best_delta = delta
+
+    return best, best_delta
+
+
+def best_peel_node(
+    state: PartitionState,
+    *,
+    random_seed: int | None = None,
+) -> tuple[Optional[int], float]:
+    nodes = list(state.G.nodes())
+    if random_seed is not None:
+        random.Random(random_seed).shuffle(nodes)
+
+    best_node: Optional[int] = None
+    best_delta = 0.0
+
+    for v in nodes:
+        cluster_idx = state.cluster_of[v]
+        if state.cluster_sizes[cluster_idx] <= 1:
+            continue
+
+        delta = delta_peel_node_as_singleton(state, v)
+        if delta > best_delta:
+            best_node = v
+            best_delta = delta
+
+    return best_node, best_delta
 
 
 def best_ruin_and_recreate(

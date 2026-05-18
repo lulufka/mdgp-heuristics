@@ -15,9 +15,11 @@ from mdgp.local_search.sparse import (
     apply_move_node_set,
     apply_rebuilt_clusters,
     apply_small_cluster_move,
+    best_exact_small_split,
     best_pair_move,
     best_bridge_split,
     best_low_degree_move,
+    best_peel_node,
     best_low_degree_peel,
     best_ruin_and_recreate,
     best_small_cluster_dissolve,
@@ -488,6 +490,88 @@ def refine_partition_sparse_low_degree_peel(
     )
 
 
+def refine_partition_sparse_best_peel(
+    G: nx.Graph,
+    partition: Partition,
+    max_passes: int = 2000,
+    max_moves: Optional[int] = None,
+    random_seed: Optional[int] = None,
+) -> LocalSearchResult:
+    rng = random.Random(random_seed)
+    state = build_partition_state(G, partition)
+
+    peel_count = 0
+    used_passes = 0
+
+    split_disconnected_clusters(state)
+
+    for _ in range(max_passes):
+        if max_moves is not None and peel_count >= max_moves:
+            break
+
+        used_passes += 1
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        node, delta = best_peel_node(state, random_seed=step_seed)
+
+        if node is None or delta <= 0:
+            break
+
+        apply_peel_node_as_singleton(state, node)
+        peel_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=peel_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
+    )
+
+
+def refine_partition_sparse_exact_small_split(
+    G: nx.Graph,
+    partition: Partition,
+    max_passes: int = 2000,
+    max_moves: Optional[int] = None,
+    random_seed: Optional[int] = None,
+    max_cluster_size: int = 10,
+) -> LocalSearchResult:
+    rng = random.Random(random_seed)
+    state = build_partition_state(G, partition)
+
+    split_count = 0
+    used_passes = 0
+
+    split_disconnected_clusters(state)
+
+    for _ in range(max_passes):
+        if max_moves is not None and split_count >= max_moves:
+            break
+
+        used_passes += 1
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        best, delta = best_exact_small_split(
+            state,
+            max_cluster_size=max_cluster_size,
+            random_seed=step_seed,
+        )
+
+        if best is None or delta <= 0:
+            break
+
+        cluster_idx, a, b = best
+        apply_split(state, cluster_idx, a, b)
+        split_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=split_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
+    )
+
+
 def refine_partition_sparse_low_degree_move(
     G: nx.Graph,
     partition: Partition,
@@ -680,6 +764,119 @@ def refine_partition_sparse_ruin_recreate(
 
         apply_rebuilt_clusters(state, clusters)
         operation_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=operation_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
+    )
+
+
+def refine_partition_sparse_vnd(
+    G: nx.Graph,
+    partition: Partition,
+    max_passes: int = 2000,
+    max_moves: Optional[int] = None,
+    random_seed: Optional[int] = None,
+    max_cluster_size: int = 10,
+) -> LocalSearchResult:
+    rng = random.Random(random_seed)
+    state = build_partition_state(G, partition)
+
+    operation_count = 0
+    used_passes = 0
+
+    split_disconnected_clusters(state)
+
+    for _ in range(max_passes):
+        if max_moves is not None and operation_count >= max_moves:
+            break
+
+        used_passes += 1
+        improved = False
+
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        best_split, split_delta = best_exact_small_split(
+            state,
+            max_cluster_size=max_cluster_size,
+            random_seed=step_seed,
+        )
+        if best_split is not None and split_delta > 0:
+            cluster_idx, a, b = best_split
+            apply_split(state, cluster_idx, a, b)
+            operation_count += 1
+            improved = True
+
+        if improved:
+            continue
+
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        node, peel_delta = best_peel_node(state, random_seed=step_seed)
+        if node is not None and peel_delta > 0:
+            apply_peel_node_as_singleton(state, node)
+            operation_count += 1
+            improved = True
+
+        if improved:
+            continue
+
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        pair_move, pair_delta = best_pair_move(state, random_seed=step_seed)
+        if pair_move is not None and pair_delta > 0:
+            nodes, target = pair_move
+            apply_move_node_set(state, nodes, target)
+            operation_count += 1
+            improved = True
+
+        if improved:
+            continue
+
+        nodes = list(G.nodes())
+        if random_seed is not None:
+            rng.shuffle(nodes)
+
+        best_v = None
+        best_target = None
+        best_delta = 0.0
+        for v in nodes:
+            target, delta = best_move_for_node(state, v)
+            if target is not None and delta > best_delta:
+                best_v = v
+                best_target = target
+                best_delta = delta
+
+        if best_v is not None and best_target is not None and best_delta > 0:
+            apply_move_node(state, best_v, best_target)
+            operation_count += 1
+            improved = True
+
+        if improved:
+            continue
+
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        rebuilt, dissolve_delta = best_small_cluster_dissolve(
+            state,
+            random_seed=step_seed,
+        )
+        if rebuilt is not None and dissolve_delta > 0:
+            apply_rebuilt_clusters(state, rebuilt)
+            operation_count += 1
+            improved = True
+
+        if improved:
+            continue
+
+        pair, merge_delta = best_merge_pair(state)
+        if pair is not None and merge_delta > 0:
+            a, b = pair
+            apply_merge_clusters(state, a, b)
+            operation_count += 1
+            improved = True
+
+        if not improved:
+            break
 
     final_partition = [set(cluster) for cluster in state.clusters if cluster]
     return LocalSearchResult(

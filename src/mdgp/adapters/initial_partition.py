@@ -20,6 +20,7 @@ def all_in_one_partition(G: nx.Graph) -> Partition:
 
 
 INITIAL_PARTITIONERS: dict[str, InitialPartitioner] = {
+    "all_in_one": all_in_one_partition,
     "matching": matching_partition,
     "singleton": singleton_partition,
 }

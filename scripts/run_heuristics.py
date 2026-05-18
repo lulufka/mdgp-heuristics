@@ -124,6 +124,21 @@ def build_algorithms(
             "matching",
             "move_first,sparse_pair_move,merge_best,sparse_pair_move,sparse_small_cluster_dissolve,merge_best,sparse_pair_move,sparse_ruin_recreate,merge_best,move_first",
         ),
+        LocalSearchExperiment(
+            "sparse ls 25 | matching | bridge late plus exact vnd",
+            "matching",
+            "move_first,merge_best,sparse_low_degree_move,sparse_pair_move,sparse_small_cluster_dissolve,sparse_ruin_recreate,merge_best,move_first,sparse_bridge_split,merge_best,sparse_exact_small_split,sparse_best_peel,sparse_vnd",
+        ),
+        LocalSearchExperiment(
+            "sparse ls 26 | matching | vnd repair",
+            "matching",
+            "move_first,merge_best,sparse_vnd",
+        ),
+        LocalSearchExperiment(
+            "sparse ls 27 | singleton | exact split peel vnd",
+            "singleton",
+            "merge_best,sparse_exact_small_split,sparse_best_peel,sparse_vnd",
+        ),
     ]
 
     local_search_algorithms = [
