@@ -73,3 +73,57 @@ def highlight_beats_kapoce(data: pd.DataFrame) -> pd.DataFrame:
                 )
 
     return styles
+
+
+def highlight_density_and_kapoce(data: pd.DataFrame) -> pd.DataFrame:
+    styles = pd.DataFrame("", index=data.index, columns=data.columns)
+
+    density_cols = [col for col in data.columns if col[1] == "density"]
+    kapoce_col = ("kapoce", "density")
+
+    for idx in data.index:
+        row = data.loc[idx, density_cols]
+        values = row.dropna()
+
+        if values.empty:
+            continue
+
+        unique_values = sorted(values.unique(), reverse=True)
+        max_val = unique_values[0]
+        second_val = unique_values[1] if len(unique_values) > 1 else None
+
+        kapoce_density = None
+        if kapoce_col in data.columns:
+            kapoce_density = data.loc[idx, kapoce_col]
+
+        for col, val in row.items():
+            css_parts = []
+
+            if val == max_val:
+                css_parts.extend([
+                    "background-color: #6aa84f",
+                    "font-weight: bold",
+                    "color: black",
+                ])
+            elif second_val is not None and val == second_val:
+                css_parts.extend([
+                    "background-color: #d9ead3",
+                    "font-weight: bold",
+                    "color: black",
+                ])
+
+            algorithm, metric = col
+
+            if (
+                    kapoce_density is not None
+                    and algorithm != "kapoce"
+                    and val > kapoce_density
+            ):
+                css_parts.extend([
+                    "box-shadow: inset 0 0 0 4px #e69138",
+                ])
+
+            if css_parts:
+                styles.loc[idx, col] = "; ".join(css_parts) + ";"
+
+    return styles

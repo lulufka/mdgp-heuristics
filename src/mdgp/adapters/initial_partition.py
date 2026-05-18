@@ -1,10 +1,11 @@
 from collections.abc import Callable
 
 import networkx as nx
+from networkx.algorithms.approximation.density import densest_subgraph
 
+from mdgp.adapters.densest_subgraph import greedy_partition
 from mdgp.adapters.matching import matching_partition
 from mdgp.core.types import Partition
-
 
 InitialPartitioner = Callable[[nx.Graph], Partition]
 
@@ -21,7 +22,6 @@ def all_in_one_partition(G: nx.Graph) -> Partition:
 INITIAL_PARTITIONERS: dict[str, InitialPartitioner] = {
     "matching": matching_partition,
     "singleton": singleton_partition,
-    "all_in_one": all_in_one_partition,
 }
 
 

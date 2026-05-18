@@ -10,6 +10,19 @@ from mdgp.local_search.merge import first_improving_merge_pair, apply_merge_clus
     max_intercluster_edges_pair, max_boundary_density_pair
 from mdgp.local_search.move import best_move_for_node, apply_move_node
 from mdgp.local_search.split import split_disconnected_clusters, best_min_cut_split, apply_split
+from mdgp.local_search.sparse import (
+    apply_peel_node_as_singleton,
+    apply_move_node_set,
+    apply_rebuilt_clusters,
+    apply_small_cluster_move,
+    best_pair_move,
+    best_bridge_split,
+    best_low_degree_move,
+    best_low_degree_peel,
+    best_ruin_and_recreate,
+    best_small_cluster_dissolve,
+    best_small_cluster_move,
+)
 from mdgp.local_search.star import best_absorb_singleton_leaves_pair, apply_absorb_singleton_leaves_into_center_cluster, \
     best_form_star_from_singleton_leaves_pair, apply_form_star_from_center_and_singleton_leaves
 from mdgp.local_search.state import build_partition_state
@@ -390,4 +403,288 @@ def refine_partition_star_form_new_cluster(G: nx.Graph, partition: Partition, ma
         num_moves=operation_count,
         num_passes=used_passes,
         final_score=partition_density(G, final_partition)
+    )
+
+
+def refine_partition_sparse_bridge_split(
+    G: nx.Graph,
+    partition: Partition,
+    max_passes: int = 2000,
+    max_moves: Optional[int] = None,
+    random_seed: Optional[int] = None,
+) -> LocalSearchResult:
+    rng = random.Random(random_seed)
+    state = build_partition_state(G, partition)
+
+    split_count = 0
+    used_passes = 0
+
+    split_disconnected_clusters(state)
+
+    for _ in range(max_passes):
+        if max_moves is not None and split_count >= max_moves:
+            break
+
+        used_passes += 1
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        best, delta = best_bridge_split(state, random_seed=step_seed)
+
+        if best is None or delta <= 0:
+            break
+
+        cluster_idx, a, b = best
+        apply_split(state, cluster_idx, a, b)
+        split_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=split_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
+    )
+
+
+def refine_partition_sparse_low_degree_peel(
+    G: nx.Graph,
+    partition: Partition,
+    max_passes: int = 2000,
+    max_moves: Optional[int] = None,
+    random_seed: Optional[int] = None,
+    max_internal_degree: int = 1,
+) -> LocalSearchResult:
+    rng = random.Random(random_seed)
+    state = build_partition_state(G, partition)
+
+    peel_count = 0
+    used_passes = 0
+
+    split_disconnected_clusters(state)
+
+    for _ in range(max_passes):
+        if max_moves is not None and peel_count >= max_moves:
+            break
+
+        used_passes += 1
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        node, delta = best_low_degree_peel(
+            state,
+            max_internal_degree=max_internal_degree,
+            random_seed=step_seed,
+        )
+
+        if node is None or delta <= 0:
+            break
+
+        apply_peel_node_as_singleton(state, node)
+        peel_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=peel_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
+    )
+
+
+def refine_partition_sparse_low_degree_move(
+    G: nx.Graph,
+    partition: Partition,
+    max_passes: int = 2000,
+    max_moves: Optional[int] = None,
+    random_seed: Optional[int] = None,
+    max_graph_degree: int = 4,
+) -> LocalSearchResult:
+    rng = random.Random(random_seed)
+    state = build_partition_state(G, partition)
+
+    move_count = 0
+    used_passes = 0
+
+    for _ in range(max_passes):
+        if max_moves is not None and move_count >= max_moves:
+            break
+
+        used_passes += 1
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        node, target, delta = best_low_degree_move(
+            state,
+            max_graph_degree=max_graph_degree,
+            random_seed=step_seed,
+        )
+
+        if node is None or target is None or delta <= 0:
+            break
+
+        apply_move_node(state, node, target)
+        move_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=move_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
+    )
+
+
+def refine_partition_sparse_small_cluster_move(
+    G: nx.Graph,
+    partition: Partition,
+    max_passes: int = 2000,
+    max_moves: Optional[int] = None,
+    random_seed: Optional[int] = None,
+    max_cluster_size: int = 5,
+) -> LocalSearchResult:
+    rng = random.Random(random_seed)
+    state = build_partition_state(G, partition)
+
+    move_count = 0
+    used_passes = 0
+
+    for _ in range(max_passes):
+        if max_moves is not None and move_count >= max_moves:
+            break
+
+        used_passes += 1
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        pair, delta = best_small_cluster_move(
+            state,
+            max_cluster_size=max_cluster_size,
+            random_seed=step_seed,
+        )
+
+        if pair is None or delta <= 0:
+            break
+
+        source, target = pair
+        apply_small_cluster_move(state, source, target)
+        move_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=move_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
+    )
+
+
+def refine_partition_sparse_small_cluster_dissolve(
+    G: nx.Graph,
+    partition: Partition,
+    max_passes: int = 2000,
+    max_moves: Optional[int] = None,
+    random_seed: Optional[int] = None,
+    max_cluster_size: int = 3,
+) -> LocalSearchResult:
+    rng = random.Random(random_seed)
+    state = build_partition_state(G, partition)
+
+    dissolve_count = 0
+    used_passes = 0
+
+    for _ in range(max_passes):
+        if max_moves is not None and dissolve_count >= max_moves:
+            break
+
+        used_passes += 1
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        clusters, delta = best_small_cluster_dissolve(
+            state,
+            max_cluster_size=max_cluster_size,
+            random_seed=step_seed,
+        )
+
+        if clusters is None or delta <= 0:
+            break
+
+        apply_rebuilt_clusters(state, clusters)
+        dissolve_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=dissolve_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
+    )
+
+
+def refine_partition_sparse_pair_move(
+    G: nx.Graph,
+    partition: Partition,
+    max_passes: int = 2000,
+    max_moves: Optional[int] = None,
+    random_seed: Optional[int] = None,
+) -> LocalSearchResult:
+    rng = random.Random(random_seed)
+    state = build_partition_state(G, partition)
+
+    move_count = 0
+    used_passes = 0
+
+    for _ in range(max_passes):
+        if max_moves is not None and move_count >= max_moves:
+            break
+
+        used_passes += 1
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        move, delta = best_pair_move(state, random_seed=step_seed)
+
+        if move is None or delta <= 0:
+            break
+
+        nodes, target = move
+        apply_move_node_set(state, nodes, target)
+        move_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=move_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
+    )
+
+
+def refine_partition_sparse_ruin_recreate(
+    G: nx.Graph,
+    partition: Partition,
+    max_passes: int = 2000,
+    max_moves: Optional[int] = None,
+    random_seed: Optional[int] = None,
+    fraction: float = 0.10,
+) -> LocalSearchResult:
+    rng = random.Random(random_seed)
+    state = build_partition_state(G, partition)
+
+    operation_count = 0
+    used_passes = 0
+
+    for _ in range(max_passes):
+        if max_moves is not None and operation_count >= max_moves:
+            break
+
+        used_passes += 1
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        clusters, delta = best_ruin_and_recreate(
+            state,
+            fraction=fraction,
+            random_seed=step_seed,
+        )
+
+        if clusters is None or delta <= 0:
+            break
+
+        apply_rebuilt_clusters(state, clusters)
+        operation_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=operation_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
     )

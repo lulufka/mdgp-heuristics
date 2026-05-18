@@ -12,7 +12,7 @@ from mdgp.adapters.external.kapoce import kapoce_partition
 from mdgp.adapters.external.leiden import leiden_mdgp_partition
 from mdgp.adapters.leiden_kapoce import leiden_mdgp_kapoce_partition
 from mdgp.adapters.local_search import build_local_search_algorithm
-from mdgp.analysis.tables import highlight_top2_density_multiindex, highlight_beats_kapoce
+from mdgp.analysis.tables import highlight_density_and_kapoce
 from mdgp.config import KAPOCE_CONFIG, KAPOCE_EXECUTABLE
 from mdgp.core.evaluation import (
     partition_cluster_sizes,
@@ -75,114 +75,54 @@ def build_algorithms(
 
     local_search_experiments = [
         LocalSearchExperiment(
-            "singleton | merge best",
-            "singleton",
-            "merge_best",
-        ),
-        LocalSearchExperiment(
-            "singleton | merge best -> move first",
-            "singleton",
-            "merge_best,move_first",
-        ),
-        LocalSearchExperiment(
-            "singleton | merge best -> move best",
-            "singleton",
-            "merge_best,move_best",
-        ),
-        LocalSearchExperiment(
-            "singleton | merge best -> move first -> merge best",
-            "singleton",
-            "merge_best,move_first,merge_best",
-        ),
-        LocalSearchExperiment(
-            "singleton | merge best -> move first -> merge best -> move first",
-            "singleton",
-            "merge_best,move_first,merge_best,move_first",
-        ),
-        LocalSearchExperiment(
-            "singleton | merge best -> move best -> merge best -> move first",
-            "singleton",
-            "merge_best,move_best,merge_best,move_first",
-        ),
-        LocalSearchExperiment(
-            "singleton | merge best -> move first -> split min cut -> merge best -> move first",
-            "singleton",
-            "merge_best,move_first,split_min_cut,merge_best,move_first",
-        ),
-        LocalSearchExperiment(
-            "singleton | merge best -> split min cut -> merge best -> move first",
-            "singleton",
-            "merge_best,split_min_cut,merge_best,move_first",
-        ),
-        LocalSearchExperiment(
-            "singleton | merge max boundary density -> move first -> merge best",
-            "singleton",
-            "merge_max_boundary_density,move_first,merge_best",
-        ),
-        LocalSearchExperiment(
-            "singleton | merge max intercluster edges -> move first -> merge best",
-            "singleton",
-            "merge_max_intercluster_edges,move_first,merge_best",
-        ),
-        LocalSearchExperiment(
-            "singleton | merge best -> move first -> star absorb singletons -> move first",
-            "singleton",
-            "merge_best,move_first,star_absorb_singletons,move_first",
-        ),
-        LocalSearchExperiment(
-            "singleton | merge best -> move first -> star form new cluster -> move first",
-            "singleton",
-            "merge_best,move_first,star_form_new_cluster,move_first",
-        ),
-        LocalSearchExperiment(
-            "singleton | merge best -> move first -> star absorb singletons -> merge best -> move first",
-            "singleton",
-            "merge_best,move_first,star_absorb_singletons,merge_best,move_first",
-        ),
-        LocalSearchExperiment(
-            "matching | move first -> merge best -> move first",
+            "sparse ls 10 | matching | repeated large moves",
             "matching",
-            "move_first,merge_best,move_first",
+            "move_first,sparse_pair_move,sparse_ruin_recreate,merge_best,sparse_small_cluster_dissolve,sparse_bridge_split,sparse_pair_move,sparse_ruin_recreate,merge_best,move_best",
         ),
         LocalSearchExperiment(
-            "matching | merge best -> move first",
+            "sparse ls 16 | matching | conservative long",
             "matching",
-            "merge_best,move_first",
+            "move_first,merge_best,sparse_low_degree_move,sparse_pair_move,sparse_small_cluster_dissolve,sparse_bridge_split,merge_best,sparse_ruin_recreate,move_first,move_best",
         ),
         LocalSearchExperiment(
-            "all in one | split min cut -> merge best -> move first",
-            "all_in_one",
-            "split_min_cut,merge_best,move_first",
+            "sparse ls 17 | matching | best current shortened",
+            "matching",
+            "move_first,merge_best,sparse_low_degree_move,sparse_pair_move,sparse_small_cluster_dissolve,sparse_bridge_split,merge_best,move_first",
         ),
         LocalSearchExperiment(
-            "singleton | merge best -> move best -> merge best -> move best",
-            "singleton",
-            "merge_best,move_best,merge_best,move_best",
+            "sparse ls 18 | matching | pair ruin before bridge",
+            "matching",
+            "move_first,sparse_pair_move,sparse_ruin_recreate,merge_best,sparse_small_cluster_dissolve,sparse_bridge_split,merge_best,move_first",
         ),
         LocalSearchExperiment(
-            "singleton | merge best -> move best -> merge best -> move first -> merge best",
-            "singleton",
-            "merge_best,move_best,merge_best,move_first,merge_best",
+            "sparse ls 19 | matching | dissolve before pair",
+            "matching",
+            "move_first,merge_best,sparse_small_cluster_dissolve,sparse_pair_move,sparse_low_degree_move,sparse_bridge_split,merge_best,move_first",
         ),
         LocalSearchExperiment(
-            "singleton | merge best -> move first -> move best -> merge best -> move first",
-            "singleton",
-            "merge_best,move_first,move_best,merge_best,move_first",
+            "sparse ls 20 | matching | double pair repair",
+            "matching",
+            "move_first,merge_best,sparse_pair_move,sparse_small_cluster_dissolve,sparse_pair_move,sparse_ruin_recreate,merge_best,move_first",
         ),
         LocalSearchExperiment(
-            "singleton | merge best -> move best -> star absorb singletons -> merge best -> move first",
-            "singleton",
-            "merge_best,move_best,star_absorb_singletons,merge_best,move_first",
+            "sparse ls 21 | matching | bridge late only",
+            "matching",
+            "move_first,merge_best,sparse_low_degree_move,sparse_pair_move,sparse_small_cluster_dissolve,sparse_ruin_recreate,merge_best,move_first,sparse_bridge_split,merge_best",
         ),
         LocalSearchExperiment(
-            "singleton | merge max boundary density -> move best -> merge best -> move first",
-            "singleton",
-            "merge_max_boundary_density,move_best,merge_best,move_first",
+            "sparse ls 22 | matching | no bridge repair",
+            "matching",
+            "move_first,merge_best,sparse_low_degree_move,sparse_pair_move,sparse_small_cluster_dissolve,sparse_ruin_recreate,merge_best,move_first",
         ),
         LocalSearchExperiment(
-            "singleton | merge best -> move best -> split min cut -> merge best -> move first",
-            "singleton",
-            "merge_best,move_best,split_min_cut,merge_best,move_first",
+            "sparse ls 23 | matching | repeated conservative",
+            "matching",
+            "move_first,merge_best,sparse_low_degree_move,sparse_pair_move,merge_best,move_first,sparse_small_cluster_dissolve,sparse_pair_move,merge_best,move_best",
+        ),
+        LocalSearchExperiment(
+            "sparse ls 24 | matching | pair heavy",
+            "matching",
+            "move_first,sparse_pair_move,merge_best,sparse_pair_move,sparse_small_cluster_dissolve,merge_best,sparse_pair_move,sparse_ruin_recreate,merge_best,move_first",
         ),
     ]
 
@@ -237,12 +177,8 @@ def main() -> None:
         default=None,
         help="Name of the dataset for the output files (defaults to folder name)",
     )
-    parser.add_argument(
-        "--random-seed",
-        type=int,
-        default=None,
-        help="Seed for randomized local-search steps.",
-    )
+    parser.add_argument("--runs", type=int, default=1)
+    parser.add_argument("--base-seed", type=int, default=42)
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir)
@@ -251,29 +187,52 @@ def main() -> None:
 
     dataset_name = args.dataset_name if args.dataset_name else data_dir.name
 
-    algorithms = build_algorithms(random_seed=args.random_seed)
-
     instances = load_instances(data_dir)
-    results: list[dict[str, Any]] = []
 
-    for inst in instances:
-        G = inst.G
-        n = G.number_of_nodes()
-        m = G.number_of_edges()
-        print(f"\n[{inst.name}] Start processing (n={n}, m={m})")
+    all_results: list[dict[str, Any]] = []
 
-        for algorithm_name, algorithm in algorithms:
-            result = evaluate_algorithm(G, algorithm_name, algorithm)
+    for run_idx in range(args.runs):
+        seed = args.base_seed + run_idx
 
-            result.update({
-                "instance": inst.name,
-                "n": n,
-                "m": m,
-            })
-            
-            results.append(result)
+        print(f"\n=== Random run {run_idx + 1}/{args.runs} | seed={seed} ===")
 
-    df = pd.DataFrame(results)
+        algorithms = build_algorithms(random_seed=seed)
+
+        for inst in instances:
+            G = inst.G
+            n = G.number_of_nodes()
+            m = G.number_of_edges()
+            print(f"\n[{inst.name}] Start processing (n={n}, m={m})")
+
+            for algorithm_name, algorithm in algorithms:
+                result = evaluate_algorithm(G, algorithm_name, algorithm)
+
+                result.update({
+                    "instance": inst.name,
+                    "n": n,
+                    "m": m,
+                    "run": run_idx + 1,
+                    "seed": seed,
+                })
+
+                all_results.append(result)
+
+    all_df = pd.DataFrame(all_results)
+
+    all_runs_path = results_dir / f"{dataset_name}_all_random_runs.csv"
+    all_df.round(4).to_csv(all_runs_path, index=False)
+    print(f"Saved all random runs to {all_runs_path}")
+
+    df = (
+        all_df
+        .sort_values(
+            ["instance", "algorithm", "density"],
+            ascending=[True, True, False],
+        )
+        .groupby(["instance", "algorithm"], as_index=False)
+        .first()
+    )
+
     metrics = ["density", "num", "max", "avg"]
 
     pivot = df.set_index(["instance", "algorithm"])[metrics].unstack("algorithm")
@@ -307,9 +266,7 @@ def main() -> None:
 
     html_path = results_dir / f"{dataset_name}_metrics_table.html"
     styled = (
-        pivot.style
-        .apply(highlight_top2_density_multiindex, axis=None)
-        .apply(highlight_beats_kapoce, axis=None)
+        pivot.style.apply(highlight_density_and_kapoce, axis=None)
         .format(precision=1)
         .set_table_styles(
             [

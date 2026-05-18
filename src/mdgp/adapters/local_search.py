@@ -1,3 +1,4 @@
+import inspect
 from collections.abc import Callable
 
 import networkx as nx
@@ -12,6 +13,13 @@ from mdgp.local_search.search import (
     refine_partition_merge_max_intercluster_edges,
     refine_partition_move_first_improvement,
     refine_partition_move_best_improvement,
+    refine_partition_sparse_bridge_split,
+    refine_partition_sparse_low_degree_move,
+    refine_partition_sparse_low_degree_peel,
+    refine_partition_sparse_pair_move,
+    refine_partition_sparse_ruin_recreate,
+    refine_partition_sparse_small_cluster_dissolve,
+    refine_partition_sparse_small_cluster_move,
     refine_partition_split_min_cut,
     refine_partition_star_absorb_singletons,
     refine_partition_star_form_new_cluster,
@@ -22,6 +30,13 @@ LocalSearchRefiner = Callable[[nx.Graph, Partition], LocalSearchResult]
 LOCAL_SEARCH_REFINERS: dict[str, LocalSearchRefiner] = {
     "move_first": refine_partition_move_first_improvement,
     "move_best": refine_partition_move_best_improvement,
+    "sparse_bridge_split": refine_partition_sparse_bridge_split,
+    "sparse_low_degree_move": refine_partition_sparse_low_degree_move,
+    "sparse_low_degree_peel": refine_partition_sparse_low_degree_peel,
+    "sparse_small_cluster_move": refine_partition_sparse_small_cluster_move,
+    "sparse_small_cluster_dissolve": refine_partition_sparse_small_cluster_dissolve,
+    "sparse_pair_move": refine_partition_sparse_pair_move,
+    "sparse_ruin_recreate": refine_partition_sparse_ruin_recreate,
     "merge_first": refine_partition_merge_first_improvement,
     "merge_best": refine_partition_merge_best_improvement,
     "merge_max_intercluster_edges": refine_partition_merge_max_intercluster_edges,
@@ -57,18 +72,14 @@ def run_local_search_pipeline(
     current_partition = partition
 
     for refine in refiners:
-        if refine in (
-            refine_partition_move_first_improvement,
-            refine_partition_move_best_improvement,
-        ):
-            result = refine(
-                G,
-                current_partition,
-                random_seed=random_seed,
-                shuffle_nodes=True,
-            )
-        else:
-            result = refine(G, current_partition)
+        kwargs = {}
+        parameters = inspect.signature(refine).parameters
+        if "random_seed" in parameters:
+            kwargs["random_seed"] = random_seed
+        if "shuffle_nodes" in parameters:
+            kwargs["shuffle_nodes"] = True
+
+        result = refine(G, current_partition, **kwargs)
         current_partition = result.partition
 
     return current_partition

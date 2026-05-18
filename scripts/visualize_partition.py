@@ -47,15 +47,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--algorithm",
         action="append",
-        choices=[
-            "matching",
-            "greedy",
-            "leiden_modularity",
-            "leiden_mdgp",
-            "kapoce",
-            "leiden_kapoce",
-            "matching_local_search",
-        ],
         default=None,
         help="Algorithm to visualize. Can be passed multiple times.",
     )
@@ -63,13 +54,12 @@ def parse_args() -> argparse.Namespace:
         "--pipeline",
         type=str,
         default="move_first,merge_first,split_min_cut",
-        help="Local-search pipeline used with --algorithm matching_local_search.",
+        help="Local-search pipeline used with --algorithm local_search.",
     )
     parser.add_argument(
         "--start-partition",
-        choices=["matching", "singleton", "all_in_one"],
-        default="matching",
-        help="Start partition used with --algorithm matching_local_search.",
+        default="singleton",
+        help="Start partition used with --algorithm local_search.",
     )
     parser.add_argument(
         "--output-dir",
@@ -144,7 +134,7 @@ def build_algorithm(name: str, pipeline: str, start_partition: str) -> Algorithm
         from mdgp.adapters.leiden_kapoce import leiden_mdgp_kapoce_partition
 
         return leiden_mdgp_kapoce_partition
-    if name == "matching_local_search":
+    if name == "local_search":
         return build_local_search_algorithm(pipeline, start_partition)
     if name == "kapoce":
         from mdgp.adapters.external.kapoce import kapoce_partition
@@ -164,7 +154,7 @@ def safe_filename(value: str) -> str:
 
 
 def display_name(algorithm_name: str, pipeline: str, start_partition: str) -> str:
-    if algorithm_name == "matching_local_search":
+    if algorithm_name == "ocal_search":
         return f"{algorithm_name} | {start_partition} | {pipeline}"
     return algorithm_name
 
@@ -230,7 +220,7 @@ def write_comparison_svg(
 def main() -> None:
     args = parse_args()
     output_dir = Path(args.output_dir)
-    algorithm_names = args.algorithm or ["matching", "matching_local_search", "kapoce"]
+    algorithm_names = args.algorithm or ["matching", "local_search", "kapoce"]
 
     instances = select_instances(load_input_instances(args.input), args.instance)
 
