@@ -1,4 +1,5 @@
 from collections.abc import Callable
+import random
 
 import networkx as nx
 from networkx.algorithms.approximation.density import densest_subgraph
@@ -19,9 +20,35 @@ def all_in_one_partition(G: nx.Graph) -> Partition:
     return [nodes] if nodes else []
 
 
+def random_matching_partition(
+    G: nx.Graph,
+    random_seed: int | None = None,
+) -> Partition:
+    rng = random.Random(random_seed)
+    edges = list(G.edges())
+    rng.shuffle(edges)
+
+    partition: Partition = []
+    used = set()
+
+    for u, v in edges:
+        if u in used or v in used:
+            continue
+        partition.append({u, v})
+        used.add(u)
+        used.add(v)
+
+    for u in G.nodes():
+        if u not in used:
+            partition.append({u})
+
+    return partition
+
+
 INITIAL_PARTITIONERS: dict[str, InitialPartitioner] = {
     "all_in_one": all_in_one_partition,
     "matching": matching_partition,
+    "random_matching": random_matching_partition,
     "singleton": singleton_partition,
 }
 

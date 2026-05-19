@@ -261,6 +261,176 @@ def apply_rebuilt_clusters(state: PartitionState, clusters: list[set[int]]) -> N
     _replace_state(state, clusters)
 
 
+def _score_clusters(state: PartitionState, clusters: list[set[int]]) -> float:
+    return sum(_edges_inside_nodes(state, cluster) / len(cluster) for cluster in clusters)
+
+
+def _is_connected_nodes(state: PartitionState, nodes: set[int]) -> bool:
+    if len(nodes) <= 1:
+        return True
+
+    subgraph = state.G.subgraph(nodes)
+    return nx.is_connected(subgraph)
+
+
+def _all_nonempty_subsets(nodes: set[int]) -> list[frozenset[int]]:
+    node_list = list(nodes)
+    subsets: list[frozenset[int]] = []
+
+    for size in range(1, len(node_list) + 1):
+        for subset in combinations(node_list, size):
+            subsets.append(frozenset(subset))
+
+    return subsets
+
+
+def _optimal_small_partition(
+        state: PartitionState,
+        nodes: set[int],
+        *,
+        max_cluster_size: int,
+) -> tuple[list[set[int]], float]:
+    """
+    Computes an optimal partition of a small node set.
+
+    Only connected clusters of size at most max_cluster_size are allowed.
+    The objective is the MDGP density sum:
+
+        sum |E(C)| / |C|
+
+    This implementation avoids bit masks and uses frozenset-based dynamic programming.
+    It is easier to read, but slower than the bit-mask version.
+    """
+    all_nodes = frozenset(nodes)
+
+    cluster_scores: dict[frozenset[int], float] = {}
+
+    for subset in _all_nonempty_subsets(nodes):
+        if len(subset) > max_cluster_size:
+            continue
+
+        subset_as_set = set(subset)
+
+        if not _is_connected_nodes(state, subset_as_set):
+            continue
+
+        internal_edges = _edges_inside_nodes(state, subset_as_set)
+        cluster_scores[subset] = internal_edges / len(subset)
+
+    best_score: dict[frozenset[int], float] = {
+        frozenset(): 0.0,
+    }
+    best_partition: dict[frozenset[int], list[frozenset[int]]] = {
+        frozenset(): [],
+    }
+
+    all_subsets = _all_nonempty_subsets(nodes)
+
+    for current_size in range(1, len(nodes) + 1):
+        for current_tuple in combinations(nodes, current_size):
+            current_nodes = frozenset(current_tuple)
+
+            best_score[current_nodes] = float("-inf")
+            best_partition[current_nodes] = []
+
+            first_node = next(iter(current_nodes))
+
+            candidate_clusters = [
+                subset
+                for subset in all_subsets
+                if (
+                        first_node in subset
+                        and subset.issubset(current_nodes)
+                        and subset in cluster_scores
+                )
+            ]
+
+            for cluster in candidate_clusters:
+                remaining_nodes = current_nodes - cluster
+
+                if remaining_nodes not in best_score:
+                    continue
+
+                candidate_score = (
+                        cluster_scores[cluster]
+                        + best_score[remaining_nodes]
+                )
+
+                candidate_partition = (
+                        [cluster]
+                        + best_partition[remaining_nodes]
+                )
+
+                current_best_score = best_score[current_nodes]
+                current_best_partition = best_partition[current_nodes]
+
+                if (
+                        candidate_score > current_best_score + 1e-12
+                        or (
+                        abs(candidate_score - current_best_score) <= 1e-12
+                        and len(candidate_partition) > len(current_best_partition)
+                )
+                ):
+                    best_score[current_nodes] = candidate_score
+                    best_partition[current_nodes] = candidate_partition
+
+    result_partition = [
+        set(cluster)
+        for cluster in best_partition[all_nodes]
+    ]
+
+    return result_partition, best_score[all_nodes]
+
+
+def best_exact_pair_repack(
+    state: PartitionState,
+    *,
+    max_nodes: int = 12,
+    max_cluster_size: int = 6,
+    random_seed: int | None = None,
+) -> tuple[Optional[tuple[set[int], list[set[int]]]], float]:
+    pairs = neighboring_cluster_pairs(state)
+    if random_seed is not None:
+        random.Random(random_seed).shuffle(pairs)
+
+    best: Optional[tuple[set[int], list[set[int]]]] = None
+    best_delta = 0.0
+
+    for a, b in pairs:
+        nodes = state.clusters[a] | state.clusters[b]
+        if len(nodes) > max_nodes:
+            continue
+
+        old_clusters = [state.clusters[a], state.clusters[b]]
+        old_score = _score_clusters(state, old_clusters)
+        new_clusters, new_score = _optimal_small_partition(
+            state,
+            nodes,
+            max_cluster_size=max_cluster_size,
+        )
+        delta = new_score - old_score
+
+        if delta > best_delta:
+            best = ({a, b}, new_clusters)
+            best_delta = delta
+
+    return best, best_delta
+
+
+def apply_exact_repack(
+    state: PartitionState,
+    replaced_indices: set[int],
+    new_clusters: list[set[int]],
+) -> None:
+    clusters = [
+        set(cluster)
+        for idx, cluster in enumerate(state.clusters)
+        if idx not in replaced_indices
+    ]
+    clusters.extend(set(cluster) for cluster in new_clusters if cluster)
+    _replace_state(state, clusters)
+
+
 def delta_split_node_set(state: PartitionState, nodes: set[int]) -> float:
     if not nodes:
         return float("-inf")

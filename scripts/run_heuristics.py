@@ -11,7 +11,10 @@ import pandas as pd
 from mdgp.adapters.external.kapoce import kapoce_partition
 from mdgp.adapters.external.leiden import leiden_mdgp_partition
 from mdgp.adapters.leiden_kapoce import leiden_mdgp_kapoce_partition
-from mdgp.adapters.local_search import build_local_search_algorithm
+from mdgp.adapters.local_search import (
+    build_local_search_algorithm,
+    build_local_search_portfolio_algorithm,
+)
 from mdgp.analysis.tables import highlight_density_and_kapoce
 from mdgp.config import KAPOCE_CONFIG, KAPOCE_EXECUTABLE
 from mdgp.core.evaluation import (
@@ -130,6 +133,11 @@ def build_algorithms(
             "move_first,merge_best,sparse_low_degree_move,sparse_pair_move,sparse_small_cluster_dissolve,sparse_ruin_recreate,merge_best,move_first,sparse_bridge_split,merge_best,sparse_exact_small_split,sparse_best_peel,sparse_vnd",
         ),
         LocalSearchExperiment(
+            "sparse ls 28 | matching | pair repack before vnd",
+            "matching",
+            "move_first,merge_best,sparse_exact_pair_repack,sparse_exact_small_split,sparse_best_peel,sparse_vnd",
+        ),
+        LocalSearchExperiment(
             "sparse ls 26 | matching | vnd repair",
             "matching",
             "move_first,merge_best,sparse_vnd",
@@ -138,6 +146,16 @@ def build_algorithms(
             "sparse ls 27 | singleton | exact split peel vnd",
             "singleton",
             "merge_best,sparse_exact_small_split,sparse_best_peel,sparse_vnd",
+        ),
+        LocalSearchExperiment(
+            "sparse ls 29 | random matching | bridge late plus exact vnd",
+            "random_matching",
+            "move_first,merge_best,sparse_low_degree_move,sparse_pair_move,sparse_small_cluster_dissolve,sparse_ruin_recreate,merge_best,move_first,sparse_bridge_split,merge_best,sparse_exact_small_split,sparse_best_peel,sparse_vnd",
+        ),
+        LocalSearchExperiment(
+            "sparse ls 30 | random matching | vnd repair",
+            "random_matching",
+            "move_first,merge_best,sparse_vnd",
         ),
     ]
 
@@ -152,6 +170,12 @@ def build_algorithms(
         )
         for experiment in local_search_experiments
     ]
+    local_search_algorithms.append(
+        (
+            "sparse portfolio | no kapoce | best current variants",
+            build_local_search_portfolio_algorithm(random_seed=random_seed),
+        )
+    )
 
     leiden_mdgp_heuristic = (
         partial(leiden_mdgp_partition, random_seed=random_seed)

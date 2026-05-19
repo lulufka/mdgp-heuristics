@@ -11,11 +11,13 @@ from mdgp.local_search.merge import first_improving_merge_pair, apply_merge_clus
 from mdgp.local_search.move import best_move_for_node, apply_move_node
 from mdgp.local_search.split import split_disconnected_clusters, best_min_cut_split, apply_split
 from mdgp.local_search.sparse import (
+    apply_exact_repack,
     apply_peel_node_as_singleton,
     apply_move_node_set,
     apply_rebuilt_clusters,
     apply_small_cluster_move,
     best_exact_small_split,
+    best_exact_pair_repack,
     best_pair_move,
     best_bridge_split,
     best_low_degree_move,
@@ -567,6 +569,52 @@ def refine_partition_sparse_exact_small_split(
     return LocalSearchResult(
         partition=final_partition,
         num_moves=split_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
+    )
+
+
+def refine_partition_sparse_exact_pair_repack(
+    G: nx.Graph,
+    partition: Partition,
+    max_passes: int = 50,
+    max_moves: Optional[int] = None,
+    random_seed: Optional[int] = None,
+    max_nodes: int = 12,
+    max_cluster_size: int = 6,
+) -> LocalSearchResult:
+    rng = random.Random(random_seed)
+    state = build_partition_state(G, partition)
+
+    repack_count = 0
+    used_passes = 0
+
+    split_disconnected_clusters(state)
+
+    for _ in range(max_passes):
+        if max_moves is not None and repack_count >= max_moves:
+            break
+
+        used_passes += 1
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        best, delta = best_exact_pair_repack(
+            state,
+            max_nodes=max_nodes,
+            max_cluster_size=max_cluster_size,
+            random_seed=step_seed,
+        )
+
+        if best is None or delta <= 0:
+            break
+
+        replaced_indices, new_clusters = best
+        apply_exact_repack(state, replaced_indices, new_clusters)
+        repack_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=repack_count,
         num_passes=used_passes,
         final_score=partition_density(G, final_partition),
     )
