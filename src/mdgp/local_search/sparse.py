@@ -265,121 +265,101 @@ def _score_clusters(state: PartitionState, clusters: list[set[int]]) -> float:
     return sum(_edges_inside_nodes(state, cluster) / len(cluster) for cluster in clusters)
 
 
-def _is_connected_nodes(state: PartitionState, nodes: set[int]) -> bool:
-    if len(nodes) <= 1:
+def _is_connected_mask(mask: int, neighbor_masks: list[int]) -> bool:
+    if mask & (mask - 1) == 0:
         return True
 
-    subgraph = state.G.subgraph(nodes)
-    return nx.is_connected(subgraph)
+    start = mask & -mask
+    seen = start
+    frontier = start
 
+    while frontier:
+        bit = frontier & -frontier
+        frontier ^= bit
+        idx = bit.bit_length() - 1
+        unseen_neighbors = neighbor_masks[idx] & mask & ~seen
+        seen |= unseen_neighbors
+        frontier |= unseen_neighbors
 
-def _all_nonempty_subsets(nodes: set[int]) -> list[frozenset[int]]:
-    node_list = list(nodes)
-    subsets: list[frozenset[int]] = []
-
-    for size in range(1, len(node_list) + 1):
-        for subset in combinations(node_list, size):
-            subsets.append(frozenset(subset))
-
-    return subsets
+    return seen == mask
 
 
 def _optimal_small_partition(
-        state: PartitionState,
-        nodes: set[int],
-        *,
-        max_cluster_size: int,
+    state: PartitionState,
+    nodes: set[int],
+    *,
+    max_cluster_size: int,
 ) -> tuple[list[set[int]], float]:
-    """
-    Computes an optimal partition of a small node set.
+    ordered_nodes = list(nodes)
+    n = len(ordered_nodes)
+    full_mask = (1 << n) - 1
+    node_to_idx = {node: idx for idx, node in enumerate(ordered_nodes)}
 
-    Only connected clusters of size at most max_cluster_size are allowed.
-    The objective is the MDGP density sum:
+    neighbor_masks = [0] * n
+    for idx, node in enumerate(ordered_nodes):
+        mask = 0
+        for neighbor in state.G.neighbors(node):
+            neighbor_idx = node_to_idx.get(neighbor)
+            if neighbor_idx is not None:
+                mask |= 1 << neighbor_idx
+        neighbor_masks[idx] = mask
 
-        sum |E(C)| / |C|
+    edge_counts = [0] * (1 << n)
+    sizes = [0] * (1 << n)
+    for mask in range(1, 1 << n):
+        bit = mask & -mask
+        idx = bit.bit_length() - 1
+        rest = mask ^ bit
+        sizes[mask] = sizes[rest] + 1
+        edge_counts[mask] = edge_counts[rest] + (neighbor_masks[idx] & rest).bit_count()
 
-    This implementation avoids bit masks and uses frozenset-based dynamic programming.
-    It is easier to read, but slower than the bit-mask version.
-    """
-    all_nodes = frozenset(nodes)
-
-    cluster_scores: dict[frozenset[int], float] = {}
-
-    for subset in _all_nonempty_subsets(nodes):
-        if len(subset) > max_cluster_size:
+    cluster_scores: list[float | None] = [None] * (1 << n)
+    for mask in range(1, 1 << n):
+        if sizes[mask] > max_cluster_size:
             continue
-
-        subset_as_set = set(subset)
-
-        if not _is_connected_nodes(state, subset_as_set):
+        if not _is_connected_mask(mask, neighbor_masks):
             continue
+        cluster_scores[mask] = edge_counts[mask] / sizes[mask]
 
-        internal_edges = _edges_inside_nodes(state, subset_as_set)
-        cluster_scores[subset] = internal_edges / len(subset)
+    dp = [float("-inf")] * (1 << n)
+    cluster_counts = [0] * (1 << n)
+    choice = [0] * (1 << n)
+    dp[0] = 0.0
 
-    best_score: dict[frozenset[int], float] = {
-        frozenset(): 0.0,
-    }
-    best_partition: dict[frozenset[int], list[frozenset[int]]] = {
-        frozenset(): [],
-    }
-
-    all_subsets = _all_nonempty_subsets(nodes)
-
-    for current_size in range(1, len(nodes) + 1):
-        for current_tuple in combinations(nodes, current_size):
-            current_nodes = frozenset(current_tuple)
-
-            best_score[current_nodes] = float("-inf")
-            best_partition[current_nodes] = []
-
-            first_node = next(iter(current_nodes))
-
-            candidate_clusters = [
-                subset
-                for subset in all_subsets
+    for mask in range(1, 1 << n):
+        first_bit = mask & -mask
+        submask = mask
+        while submask:
+            if submask & first_bit and cluster_scores[submask] is not None:
+                rest = mask ^ submask
+                candidate_score = cluster_scores[submask] + dp[rest]
+                candidate_count = 1 + cluster_counts[rest]
                 if (
-                        first_node in subset
-                        and subset.issubset(current_nodes)
-                        and subset in cluster_scores
-                )
-            ]
-
-            for cluster in candidate_clusters:
-                remaining_nodes = current_nodes - cluster
-
-                if remaining_nodes not in best_score:
-                    continue
-
-                candidate_score = (
-                        cluster_scores[cluster]
-                        + best_score[remaining_nodes]
-                )
-
-                candidate_partition = (
-                        [cluster]
-                        + best_partition[remaining_nodes]
-                )
-
-                current_best_score = best_score[current_nodes]
-                current_best_partition = best_partition[current_nodes]
-
-                if (
-                        candidate_score > current_best_score + 1e-12
-                        or (
-                        abs(candidate_score - current_best_score) <= 1e-12
-                        and len(candidate_partition) > len(current_best_partition)
-                )
+                    candidate_score > dp[mask] + 1e-12
+                    or (
+                        abs(candidate_score - dp[mask]) <= 1e-12
+                        and candidate_count > cluster_counts[mask]
+                    )
                 ):
-                    best_score[current_nodes] = candidate_score
-                    best_partition[current_nodes] = candidate_partition
+                    dp[mask] = candidate_score
+                    cluster_counts[mask] = candidate_count
+                    choice[mask] = submask
+            submask = (submask - 1) & mask
 
-    result_partition = [
-        set(cluster)
-        for cluster in best_partition[all_nodes]
-    ]
+    clusters = []
+    mask = full_mask
+    while mask:
+        selected = choice[mask]
+        clusters.append(
+            {
+                ordered_nodes[idx]
+                for idx in range(n)
+                if selected & (1 << idx)
+            }
+        )
+        mask ^= selected
 
-    return result_partition, best_score[all_nodes]
+    return clusters, dp[full_mask]
 
 
 def best_exact_pair_repack(
