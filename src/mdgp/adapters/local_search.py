@@ -17,6 +17,7 @@ from mdgp.local_search.search import (
     refine_partition_sparse_bridge_split,
     refine_partition_sparse_best_peel,
     refine_partition_sparse_exact_pair_repack,
+    refine_partition_sparse_exact_multi_repack,
     refine_partition_sparse_exact_small_split,
     refine_partition_sparse_low_degree_move,
     refine_partition_sparse_low_degree_peel,
@@ -39,6 +40,7 @@ LOCAL_SEARCH_REFINERS: dict[str, LocalSearchRefiner] = {
     "sparse_bridge_split": refine_partition_sparse_bridge_split,
     "sparse_best_peel": refine_partition_sparse_best_peel,
     "sparse_exact_pair_repack": refine_partition_sparse_exact_pair_repack,
+    "sparse_exact_multi_repack": refine_partition_sparse_exact_multi_repack,
     "sparse_exact_small_split": refine_partition_sparse_exact_small_split,
     "sparse_low_degree_move": refine_partition_sparse_low_degree_move,
     "sparse_small_cluster_dissolve": refine_partition_sparse_small_cluster_dissolve,
@@ -142,6 +144,11 @@ DEFAULT_PORTFOLIO_CANDIDATES: tuple[tuple[str, str], ...] = (
         "matching",
         "move_first,merge_best,sparse_exact_pair_repack,sparse_exact_small_split,"
         "sparse_best_peel,sparse_vnd",
+    ),
+    (
+        "matching",
+        "move_first,merge_best,sparse_exact_pair_repack,sparse_exact_multi_repack,"
+        "sparse_exact_small_split,sparse_best_peel,sparse_vnd",
     ),
     ("singleton", "merge_best,sparse_exact_small_split,sparse_best_peel,sparse_vnd"),
 )

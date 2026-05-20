@@ -37,29 +37,34 @@ class LocalSearchExperiment:
 def build_local_search_experiments() -> list[LocalSearchExperiment]:
     return [
         LocalSearchExperiment(
-            "sparse ls 28 | matching | pair repack before vnd",
-            "matching",
-            "move_first,merge_best,sparse_exact_pair_repack,sparse_exact_small_split,sparse_best_peel,sparse_vnd",
-        ),
-        LocalSearchExperiment(
-            "sparse ls 29 | random matching | bridge late plus exact vnd",
-            "random_matching",
-            "move_first,merge_best,sparse_low_degree_move,sparse_pair_move,sparse_small_cluster_dissolve,sparse_ruin_recreate,merge_best,move_first,sparse_bridge_split,merge_best,sparse_exact_small_split,sparse_best_peel,sparse_vnd",
-        ),
-        LocalSearchExperiment(
-            "sparse ls 30 | random matching | vnd repair",
-            "random_matching",
-            "move_first,merge_best,sparse_vnd",
-        ),
-        LocalSearchExperiment(
-            "sparse ls 31 | matching | pair repack",
+            "sparse ls 1 | matching | pair repack",
             "matching",
             "move_first,merge_best,sparse_exact_pair_repack,sparse_vnd",
         ),
         LocalSearchExperiment(
-            "sparse ls 32 | matching | pair repack and repair",
-            "matching",
-            "move_first,merge_best,sparse_exact_pair_repack,sparse_pair_move,sparse_small_cluster_dissolve,merge_best",
+            "sparse ls 2 | matching | pair repack",
+            "maximum_matching",
+            "move_first,merge_best,sparse_exact_pair_repack,sparse_vnd",
+        ),
+        LocalSearchExperiment(
+            "sparse ls 3 | matching | pair repack",
+            "random_matching",
+            "move_first,merge_best,sparse_exact_pair_repack,sparse_vnd",
+        ),
+        LocalSearchExperiment(
+            "sparse ls 4 | matching | pair repack",
+            "low_degree_matching",
+            "move_first,merge_best,sparse_exact_pair_repack,sparse_vnd",
+        ),
+        LocalSearchExperiment(
+            "sparse ls 5 | matching | pair repack",
+            "high_degree_matching",
+            "move_first,merge_best,sparse_exact_pair_repack,sparse_vnd",
+        ),
+        LocalSearchExperiment(
+            "sparse ls 6 | matching | pair repack",
+            "singleton",
+            "move_first,merge_best,sparse_exact_pair_repack,sparse_vnd",
         ),
     ]
 
@@ -68,7 +73,6 @@ def build_algorithm_names() -> list[str]:
     return (
             [experiment.name for experiment in build_local_search_experiments()]
             + [
-                "sparse portfolio | no kapoce | best current variants",
                 "leiden mdgp",
                 "kapoce",
                 "leiden with kapoce",
@@ -112,9 +116,6 @@ def build_algorithm_by_name(
             experiment.start_partition,
             random_seed=random_seed,
         )
-
-    if algorithm_name == "sparse portfolio | no kapoce | best current variants":
-        return build_local_search_portfolio_algorithm(random_seed=random_seed)
 
     if algorithm_name == "leiden mdgp":
         return partial(leiden_mdgp_partition, random_seed=random_seed)

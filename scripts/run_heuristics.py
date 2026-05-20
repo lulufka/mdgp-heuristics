@@ -138,6 +138,11 @@ def build_algorithms(
             "move_first,merge_best,sparse_exact_pair_repack,sparse_exact_small_split,sparse_best_peel,sparse_vnd",
         ),
         LocalSearchExperiment(
+            "sparse ls 33 | matching | pair multi repack",
+            "matching",
+            "move_first,merge_best,sparse_exact_pair_repack,sparse_exact_multi_repack,sparse_exact_small_split,sparse_best_peel,sparse_vnd",
+        ),
+        LocalSearchExperiment(
             "sparse ls 26 | matching | vnd repair",
             "matching",
             "move_first,merge_best,sparse_vnd",

@@ -5,7 +5,8 @@ import networkx as nx
 from networkx.algorithms.approximation.density import densest_subgraph
 
 from mdgp.adapters.densest_subgraph import greedy_partition
-from mdgp.adapters.matching import matching_partition
+from mdgp.adapters.matching import matching_partition, maximum_matching_partition, randomized_greedy_matching_partition, \
+    low_degree_first_matching_partition, high_degree_first_matching_partition
 from mdgp.core.types import Partition
 
 InitialPartitioner = Callable[[nx.Graph], Partition]
@@ -48,7 +49,10 @@ def random_matching_partition(
 INITIAL_PARTITIONERS: dict[str, InitialPartitioner] = {
     "all_in_one": all_in_one_partition,
     "matching": matching_partition,
-    "random_matching": random_matching_partition,
+    "maximum_matching": maximum_matching_partition,
+    "random_matching": randomized_greedy_matching_partition,
+    "low_degree_matching": low_degree_first_matching_partition,
+    "high_degree_matching": high_degree_first_matching_partition,
     "singleton": singleton_partition,
 }
 

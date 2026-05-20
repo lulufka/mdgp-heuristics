@@ -397,6 +397,87 @@ def best_exact_pair_repack(
     return best, best_delta
 
 
+def _neighboring_cluster_sets(
+    state: PartitionState,
+    *,
+    group_size: int,
+    max_nodes: int,
+    max_neighbors_per_cluster: int,
+    max_groups: int,
+    random_seed: int | None = None,
+) -> list[set[int]]:
+    neighbors: dict[int, set[int]] = {idx: set() for idx in range(len(state.clusters))}
+    for a, b in neighboring_cluster_pairs(state):
+        neighbors[a].add(b)
+        neighbors[b].add(a)
+
+    rng = random.Random(random_seed)
+    groups: set[tuple[int, ...]] = set()
+
+    for center, center_neighbors in neighbors.items():
+        candidate_neighbors = list(center_neighbors)
+        if random_seed is not None:
+            rng.shuffle(candidate_neighbors)
+        candidate_neighbors.sort(
+            key=lambda idx: state.cluster_sizes[idx],
+        )
+        candidate_neighbors = candidate_neighbors[:max_neighbors_per_cluster]
+
+        for selected in combinations(candidate_neighbors, group_size - 1):
+            group = {center, *selected}
+            node_count = sum(state.cluster_sizes[idx] for idx in group)
+            if node_count <= max_nodes:
+                groups.add(tuple(sorted(group)))
+
+    result = [set(group) for group in groups]
+    if random_seed is not None:
+        rng.shuffle(result)
+    else:
+        result.sort(key=lambda group: tuple(sorted(group)))
+
+    return result[:max_groups]
+
+
+def best_exact_multi_repack(
+    state: PartitionState,
+    *,
+    group_size: int = 3,
+    max_nodes: int = 12,
+    max_cluster_size: int = 6,
+    max_neighbors_per_cluster: int = 6,
+    max_groups: int = 100,
+    random_seed: int | None = None,
+) -> tuple[Optional[tuple[set[int], list[set[int]]]], float]:
+    groups = _neighboring_cluster_sets(
+        state,
+        group_size=group_size,
+        max_nodes=max_nodes,
+        max_neighbors_per_cluster=max_neighbors_per_cluster,
+        max_groups=max_groups,
+        random_seed=random_seed,
+    )
+
+    best: Optional[tuple[set[int], list[set[int]]]] = None
+    best_delta = 0.0
+
+    for group in groups:
+        nodes = set().union(*(state.clusters[idx] for idx in group))
+        old_clusters = [state.clusters[idx] for idx in group]
+        old_score = _score_clusters(state, old_clusters)
+        new_clusters, new_score = _optimal_small_partition(
+            state,
+            nodes,
+            max_cluster_size=max_cluster_size,
+        )
+        delta = new_score - old_score
+
+        if delta > best_delta:
+            best = (set(group), new_clusters)
+            best_delta = delta
+
+    return best, best_delta
+
+
 def apply_exact_repack(
     state: PartitionState,
     replaced_indices: set[int],
