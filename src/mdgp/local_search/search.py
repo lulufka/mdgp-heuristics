@@ -8,25 +8,37 @@ from mdgp.core.evaluation import partition_density
 from mdgp.core.types import Partition
 from mdgp.local_search.merge import first_improving_merge_pair, apply_merge_clusters, best_merge_pair, \
     max_intercluster_edges_pair, max_boundary_density_pair
-from mdgp.local_search.move import best_move_for_node, apply_move_node
+from mdgp.local_search.move import (
+    apply_isolate_node,
+    apply_move_node,
+    best_move_for_node,
+    delta_isolate_node,
+    delta_move_node,
+)
 from mdgp.local_search.split import split_disconnected_clusters, best_min_cut_split, apply_split
 from mdgp.local_search.sparse import (
     apply_exact_repack,
+    apply_bridge_singleton_cut,
     apply_peel_node_as_singleton,
     apply_move_node_set,
     apply_rebuilt_clusters,
+    apply_swap_nodes,
     apply_small_cluster_move,
     best_exact_small_split,
     best_exact_multi_repack,
     best_exact_pair_repack,
+    best_bridge_singleton_cut,
     best_pair_move,
     best_bridge_split,
     best_low_degree_move,
+    best_node_ruin_and_recreate,
     best_peel_node,
     best_low_degree_peel,
     best_ruin_and_recreate,
     best_small_cluster_dissolve,
     best_small_cluster_move,
+    best_vertex_swap,
+    node_ruin_and_recreate_candidate,
 )
 from mdgp.local_search.star import best_absorb_singleton_leaves_pair, apply_absorb_singleton_leaves_into_center_cluster, \
     best_form_star_from_singleton_leaves_pair, apply_form_star_from_center_and_singleton_leaves
@@ -170,6 +182,108 @@ def refine_partition_move_best_improvement(
 
         apply_move_node(state, best_v, best_target)
         move_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=move_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
+    )
+
+
+def refine_partition_move_plateau(
+    G: nx.Graph,
+    partition: Partition,
+    max_passes: int = 100,
+    max_moves: Optional[int] = None,
+    max_zero_gain_moves: Optional[int] = None,
+    random_seed: Optional[int] = None,
+    shuffle_nodes: bool = True,
+    epsilon: float = 1e-12,
+) -> LocalSearchResult:
+    """
+    Label-propagation style node moves with bounded zero-gain plateau walking.
+
+    For each node this considers neighboring clusters and the option to isolate the
+    node as a singleton. Improving moves are always accepted; zero-gain moves are
+    accepted up to max_zero_gain_moves to avoid unbounded cycling on plateaus.
+    """
+    rng = random.Random(random_seed)
+    state = build_partition_state(G, partition)
+
+    move_count = 0
+    zero_gain_count = 0
+    zero_gain_limit = (
+        max_zero_gain_moves
+        if max_zero_gain_moves is not None
+        else max(1, 2 * G.number_of_nodes())
+    )
+    used_passes = 0
+
+    for _ in range(max_passes):
+        used_passes += 1
+        changed_in_pass = False
+
+        nodes = list(G.nodes())
+        if shuffle_nodes:
+            rng.shuffle(nodes)
+
+        for v in nodes:
+            if max_moves is not None and move_count >= max_moves:
+                final_partition = [set(cluster) for cluster in state.clusters if cluster]
+                return LocalSearchResult(
+                    partition=final_partition,
+                    num_moves=move_count,
+                    num_passes=used_passes,
+                    final_score=partition_density(G, final_partition),
+                )
+
+            source_cluster = state.cluster_of[v]
+            candidate_clusters = {
+                state.cluster_of[u]
+                for u in state.G.neighbors(v)
+                if state.cluster_of[u] != source_cluster
+            }
+
+            best_target: int | None = None
+            best_is_singleton = False
+            best_delta = float("-inf")
+
+            for target_cluster in candidate_clusters:
+                delta = delta_move_node(state, v, target_cluster)
+                if delta > best_delta:
+                    best_target = target_cluster
+                    best_is_singleton = False
+                    best_delta = delta
+
+            isolate_delta = delta_isolate_node(state, v)
+            if isolate_delta > best_delta:
+                best_target = None
+                best_is_singleton = True
+                best_delta = isolate_delta
+
+            is_improving = best_delta > epsilon
+            is_zero_gain = abs(best_delta) <= epsilon
+            if not is_improving and not (
+                is_zero_gain and zero_gain_count < zero_gain_limit
+            ):
+                continue
+
+            if best_is_singleton:
+                apply_isolate_node(state, v)
+            elif best_target is not None:
+                apply_move_node(state, v, best_target)
+            else:
+                continue
+
+            move_count += 1
+            changed_in_pass = True
+            if is_zero_gain:
+                zero_gain_count += 1
+
+        if not changed_in_pass:
+            break
 
     final_partition = [set(cluster) for cluster in state.clusters if cluster]
     return LocalSearchResult(
@@ -445,6 +559,52 @@ def refine_partition_sparse_bridge_split(
     return LocalSearchResult(
         partition=final_partition,
         num_moves=split_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
+    )
+
+
+def refine_partition_sparse_bridge_singleton_cut(
+    G: nx.Graph,
+    partition: Partition,
+    max_passes: int = 2000,
+    max_moves: Optional[int] = None,
+    random_seed: Optional[int] = None,
+    min_remaining_size: int = 3,
+    epsilon: float = 1e-12,
+) -> LocalSearchResult:
+    rng = random.Random(random_seed)
+    state = build_partition_state(G, partition)
+
+    cut_count = 0
+    used_passes = 0
+
+    split_disconnected_clusters(state)
+
+    for _ in range(max_passes):
+        if max_moves is not None and cut_count >= max_moves:
+            break
+
+        used_passes += 1
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        cut, delta = best_bridge_singleton_cut(
+            state,
+            min_remaining_size=min_remaining_size,
+            random_seed=step_seed,
+            epsilon=epsilon,
+        )
+
+        if cut is None or delta < -epsilon:
+            break
+
+        node, target = cut
+        apply_bridge_singleton_cut(state, node, target)
+        cut_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=cut_count,
         num_passes=used_passes,
         final_score=partition_density(G, final_partition),
     )
@@ -834,6 +994,91 @@ def refine_partition_sparse_pair_move(
     )
 
 
+def refine_partition_sparse_vertex_swap(
+    G: nx.Graph,
+    partition: Partition,
+    max_passes: int = 2000,
+    max_moves: Optional[int] = None,
+    random_seed: Optional[int] = None,
+    max_candidates: Optional[int] = None,
+) -> LocalSearchResult:
+    rng = random.Random(random_seed)
+    state = build_partition_state(G, partition)
+
+    swap_count = 0
+    used_passes = 0
+
+    for _ in range(max_passes):
+        if max_moves is not None and swap_count >= max_moves:
+            break
+
+        used_passes += 1
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        swap, delta = best_vertex_swap(
+            state,
+            random_seed=step_seed,
+            max_candidates=max_candidates,
+        )
+
+        if swap is None or delta <= 0:
+            break
+
+        u, v = swap
+        apply_swap_nodes(state, u, v)
+        swap_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=swap_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
+    )
+
+
+def refine_partition_sparse_node_ruin_recreate(
+    G: nx.Graph,
+    partition: Partition,
+    max_passes: int = 5,
+    max_moves: Optional[int] = None,
+    random_seed: Optional[int] = None,
+    fraction: float = 0.05,
+    attempts: int = 3,
+) -> LocalSearchResult:
+    rng = random.Random(random_seed)
+    state = build_partition_state(G, partition)
+
+    operation_count = 0
+    used_passes = 0
+
+    for _ in range(max_passes):
+        if max_moves is not None and operation_count >= max_moves:
+            break
+
+        used_passes += 1
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        clusters, delta = best_node_ruin_and_recreate(
+            state,
+            fraction=fraction,
+            attempts=attempts,
+            random_seed=step_seed,
+        )
+
+        if clusters is None or delta <= 0:
+            break
+
+        apply_rebuilt_clusters(state, clusters)
+        operation_count += 1
+
+    final_partition = [set(cluster) for cluster in state.clusters if cluster]
+    return LocalSearchResult(
+        partition=final_partition,
+        num_moves=operation_count,
+        num_passes=used_passes,
+        final_score=partition_density(G, final_partition),
+    )
+
+
 def refine_partition_sparse_ruin_recreate(
     G: nx.Graph,
     partition: Partition,
@@ -875,6 +1120,134 @@ def refine_partition_sparse_ruin_recreate(
     )
 
 
+def _kapoce_like_intensify(
+    G: nx.Graph,
+    partition: Partition,
+    rng: random.Random,
+    random_seed: Optional[int],
+) -> Partition:
+    current = partition
+
+    step_seed = rng.randrange(2**32) if random_seed is not None else None
+    current = refine_partition_move_plateau(
+        G,
+        current,
+        max_passes=10,
+        max_zero_gain_moves=max(1, min(G.number_of_nodes(), 500)),
+        random_seed=step_seed,
+    ).partition
+
+    step_seed = rng.randrange(2**32) if random_seed is not None else None
+    current = refine_partition_sparse_vertex_swap(
+        G,
+        current,
+        max_passes=25,
+        max_candidates=20000,
+        random_seed=step_seed,
+    ).partition
+
+    step_seed = rng.randrange(2**32) if random_seed is not None else None
+    current = refine_partition_sparse_bridge_singleton_cut(
+        G,
+        current,
+        max_passes=50,
+        random_seed=step_seed,
+    ).partition
+
+    step_seed = rng.randrange(2**32) if random_seed is not None else None
+    current = refine_partition_sparse_exact_small_split(
+        G,
+        current,
+        max_passes=20,
+        random_seed=step_seed,
+    ).partition
+
+    step_seed = rng.randrange(2**32) if random_seed is not None else None
+    current = refine_partition_sparse_small_cluster_dissolve(
+        G,
+        current,
+        max_passes=20,
+        random_seed=step_seed,
+    ).partition
+
+    current = refine_partition_merge_best_improvement(G, current).partition
+    step_seed = rng.randrange(2**32) if random_seed is not None else None
+    current = refine_partition_move_best_improvement(
+        G,
+        current,
+        max_passes=100,
+        random_seed=step_seed,
+    ).partition
+
+    return current
+
+
+def refine_partition_sparse_kapoce_vns(
+    G: nx.Graph,
+    partition: Partition,
+    max_passes: int = 5,
+    max_moves: Optional[int] = None,
+    random_seed: Optional[int] = None,
+    shake_fractions: tuple[float, ...] = (0.01, 0.05, 0.10, 0.25),
+) -> LocalSearchResult:
+    """
+    KaPoCE-inspired VNS: intensify, shake by node ruin/recreate, intensify again.
+
+    Shaking candidates may be worse before the second intensification. The refiner
+    returns the best partition found, so the pipeline remains monotone overall.
+    """
+    rng = random.Random(random_seed)
+
+    current = _kapoce_like_intensify(G, partition, rng, random_seed)
+    best_partition = current
+    best_score = partition_density(G, best_partition)
+
+    operation_count = 0
+    used_passes = 0
+
+    for _ in range(max_passes):
+        if max_moves is not None and operation_count >= max_moves:
+            break
+
+        used_passes += 1
+        improved = False
+
+        for fraction in shake_fractions:
+            if max_moves is not None and operation_count >= max_moves:
+                break
+
+            state = build_partition_state(G, current)
+            step_seed = rng.randrange(2**32) if random_seed is not None else None
+            shaken, _ = node_ruin_and_recreate_candidate(
+                state,
+                fraction=fraction,
+                random_seed=step_seed,
+            )
+            if shaken is None:
+                continue
+
+            candidate = _kapoce_like_intensify(G, shaken, rng, random_seed)
+            candidate_score = partition_density(G, candidate)
+            operation_count += 1
+
+            if candidate_score > best_score:
+                current = candidate
+                best_partition = candidate
+                best_score = candidate_score
+                improved = True
+                break
+
+        if not improved:
+            break
+
+    return LocalSearchResult(
+        partition=best_partition,
+        num_moves=operation_count,
+        num_passes=used_passes,
+        final_score=best_score,
+    )
+
+
 def refine_partition_sparse_vnd(
     G: nx.Graph,
     partition: Partition,
@@ -897,6 +1270,20 @@ def refine_partition_sparse_vnd(
 
         used_passes += 1
         improved = False
+
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        bridge_cut, bridge_cut_delta = best_bridge_singleton_cut(
+            state,
+            random_seed=step_seed,
+        )
+        if bridge_cut is not None and bridge_cut_delta >= 0:
+            node, target = bridge_cut
+            apply_bridge_singleton_cut(state, node, target)
+            operation_count += 1
+            improved = True
+
+        if improved:
+            continue
 
         step_seed = rng.randrange(2**32) if random_seed is not None else None
         best_split, split_delta = best_exact_small_split(

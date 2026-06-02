@@ -35,36 +35,44 @@ class LocalSearchExperiment:
 
 
 def build_local_search_experiments() -> list[LocalSearchExperiment]:
+    sequential_pipeline = (
+        "move_plateau,sparse_vertex_swap,sparse_node_ruin_recreate,"
+        "move_plateau,sparse_vertex_swap"
+    )
+
     return [
         LocalSearchExperiment(
-            "sparse ls 1 | matching | pair repack",
+            "1 | matching | sequential",
             "matching",
-            "move_first,merge_best,sparse_exact_pair_repack,sparse_vnd",
+            sequential_pipeline,
         ),
         LocalSearchExperiment(
-            "sparse ls 2 | matching | pair repack",
-            "maximum_matching",
-            "move_first,merge_best,sparse_exact_pair_repack,sparse_vnd",
+            "2 | clique seed | sequential",
+            "clique_seed",
+            sequential_pipeline,
         ),
         LocalSearchExperiment(
-            "sparse ls 3 | matching | pair repack",
-            "random_matching",
-            "move_first,merge_best,sparse_exact_pair_repack,sparse_vnd",
+            "3 | clique seed | bridge cut vnd",
+            "clique_seed",
+            "move_plateau,sparse_bridge_singleton_cut,sparse_vertex_swap,"
+            "merge_best,sparse_vnd",
         ),
         LocalSearchExperiment(
-            "sparse ls 4 | matching | pair repack",
-            "low_degree_matching",
-            "move_first,merge_best,sparse_exact_pair_repack,sparse_vnd",
+            "4 | clique seed | exact pair repair",
+            "clique_seed",
+            "move_plateau,merge_best,sparse_exact_pair_repack,"
+            "sparse_bridge_singleton_cut,sparse_vnd",
         ),
         LocalSearchExperiment(
-            "sparse ls 5 | matching | pair repack",
-            "high_degree_matching",
-            "move_first,merge_best,sparse_exact_pair_repack,sparse_vnd",
+            "5 | clique seed | node ruin repair",
+            "clique_seed",
+            "move_plateau,sparse_node_ruin_recreate,move_plateau,"
+            "sparse_bridge_singleton_cut,merge_best,sparse_vnd",
         ),
         LocalSearchExperiment(
-            "sparse ls 6 | matching | pair repack",
-            "singleton",
-            "move_first,merge_best,sparse_exact_pair_repack,sparse_vnd",
+            "6 | clique seed | kapoce-style vns",
+            "clique_seed",
+            "sparse_kapoce_vns",
         ),
     ]
 
@@ -73,9 +81,7 @@ def build_algorithm_names() -> list[str]:
     return (
             [experiment.name for experiment in build_local_search_experiments()]
             + [
-                "leiden mdgp",
                 "kapoce",
-                "leiden with kapoce",
             ]
     )
 

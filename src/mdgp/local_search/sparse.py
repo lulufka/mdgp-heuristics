@@ -67,6 +67,185 @@ def _apply_add_node_as_singleton(state: PartitionState, v: int) -> None:
     state.internal_edges.append(0)
 
 
+def _neighbors_in_cluster_excluding(
+    state: PartitionState,
+    v: int,
+    cluster_idx: int,
+    excluded: int,
+) -> int:
+    count = 0
+    for u in state.G.neighbors(v):
+        if u != excluded and state.cluster_of.get(u) == cluster_idx:
+            count += 1
+    return count
+
+
+def delta_swap_nodes(state: PartitionState, u: int, v: int) -> float:
+    """
+    Calculates the score change for swapping nodes u and v between their clusters.
+    """
+    cluster_u = state.cluster_of[u]
+    cluster_v = state.cluster_of[v]
+
+    if cluster_u == cluster_v:
+        return float("-inf")
+
+    edges_u = state.internal_edges[cluster_u]
+    edges_v = state.internal_edges[cluster_v]
+    size_u = state.cluster_sizes[cluster_u]
+    size_v = state.cluster_sizes[cluster_v]
+
+    u_to_u_cluster = neighbors_in_cluster(state, u, cluster_u)
+    v_to_v_cluster = neighbors_in_cluster(state, v, cluster_v)
+    v_to_u_cluster = _neighbors_in_cluster_excluding(state, v, cluster_u, u)
+    u_to_v_cluster = _neighbors_in_cluster_excluding(state, u, cluster_v, v)
+
+    old_score = (edges_u / size_u) + (edges_v / size_v)
+    new_score = (
+        (edges_u - u_to_u_cluster + v_to_u_cluster) / size_u
+        + (edges_v - v_to_v_cluster + u_to_v_cluster) / size_v
+    )
+
+    return new_score - old_score
+
+
+def apply_swap_nodes(state: PartitionState, u: int, v: int) -> None:
+    cluster_u = state.cluster_of[u]
+    cluster_v = state.cluster_of[v]
+
+    if cluster_u == cluster_v:
+        raise ValueError("cannot swap nodes from the same cluster")
+
+    clusters = [set(cluster) for cluster in state.clusters]
+    clusters[cluster_u].remove(u)
+    clusters[cluster_v].remove(v)
+    clusters[cluster_u].add(v)
+    clusters[cluster_v].add(u)
+    _replace_state(state, clusters)
+
+
+def best_vertex_swap(
+    state: PartitionState,
+    *,
+    random_seed: int | None = None,
+    max_candidates: int | None = None,
+) -> tuple[Optional[tuple[int, int]], float]:
+    """
+    Finds the best improving swap among endpoints of inter-cluster edges.
+    """
+    candidates = [
+        (u, v)
+        for u, v in state.G.edges()
+        if state.cluster_of[u] != state.cluster_of[v]
+    ]
+
+    if random_seed is not None:
+        random.Random(random_seed).shuffle(candidates)
+
+    if max_candidates is not None:
+        candidates = candidates[:max_candidates]
+
+    best: Optional[tuple[int, int]] = None
+    best_delta = 0.0
+
+    for u, v in candidates:
+        delta = delta_swap_nodes(state, u, v)
+        if delta > best_delta:
+            best = (u, v)
+            best_delta = delta
+
+    return best, best_delta
+
+
+def node_ruin_and_recreate_candidate(
+    state: PartitionState,
+    *,
+    fraction: float = 0.05,
+    random_seed: int | None = None,
+) -> tuple[Optional[list[set[int]]], float]:
+    """
+    Removes a random fraction of nodes and greedily reinserts them.
+
+    This is intentionally a shaking operator: it may return a worse partition.
+    """
+    nodes = list(state.G.nodes())
+    if len(nodes) <= 1:
+        return None, 0.0
+
+    ruin_count = max(1, int(len(nodes) * fraction))
+    ruin_count = min(ruin_count, len(nodes) - 1)
+
+    rng = random.Random(random_seed)
+    ruined_nodes = set(rng.sample(nodes, ruin_count))
+
+    base_clusters = [
+        set(cluster) - ruined_nodes
+        for cluster in state.clusters
+        if set(cluster) - ruined_nodes
+    ]
+
+    if base_clusters:
+        temp_state = build_partition_state(state.G, base_clusters)
+    else:
+        first = ruined_nodes.pop()
+        temp_state = build_partition_state(state.G, [{first}])
+
+    reinsertion_order = list(ruined_nodes)
+    rng.shuffle(reinsertion_order)
+    reinsertion_order.sort(key=lambda node: state.G.degree[node], reverse=True)
+
+    for v in reinsertion_order:
+        candidate_clusters = {
+            temp_state.cluster_of[u]
+            for u in state.G.neighbors(v)
+            if u in temp_state.cluster_of
+        }
+
+        best_target = None
+        best_delta = 0.0
+        for target_cluster in candidate_clusters:
+            delta = _add_node_delta(temp_state, v, target_cluster)
+            if delta > best_delta:
+                best_target = target_cluster
+                best_delta = delta
+
+        if best_target is None:
+            _apply_add_node_as_singleton(temp_state, v)
+        else:
+            _apply_add_node_to_cluster(temp_state, v, best_target)
+
+    clusters = [set(cluster) for cluster in temp_state.clusters]
+    return clusters, temp_state.score() - state.score()
+
+
+def best_node_ruin_and_recreate(
+    state: PartitionState,
+    *,
+    fraction: float = 0.05,
+    attempts: int = 3,
+    random_seed: int | None = None,
+) -> tuple[Optional[list[set[int]]], float]:
+    rng = random.Random(random_seed)
+    best_clusters: Optional[list[set[int]]] = None
+    best_delta = float("-inf")
+
+    for _ in range(attempts):
+        step_seed = rng.randrange(2**32) if random_seed is not None else None
+        clusters, delta = node_ruin_and_recreate_candidate(
+            state,
+            fraction=fraction,
+            random_seed=step_seed,
+        )
+        if clusters is not None and delta > best_delta:
+            best_clusters = clusters
+            best_delta = delta
+
+    if best_clusters is None:
+        return None, 0.0
+
+    return best_clusters, best_delta
+
+
 def best_small_cluster_move(
     state: PartitionState,
     *,
@@ -715,6 +894,141 @@ def apply_peel_node_as_singleton(state: PartitionState, v: int) -> None:
     state.cluster_sizes.append(1)
     state.internal_edges.append(0)
     state.cluster_of[v] = len(state.clusters) - 1
+
+
+def _singleton_bridge_nodes(
+    state: PartitionState,
+    cluster_idx: int,
+    *,
+    min_remaining_size: int,
+) -> set[int]:
+    cluster = state.clusters[cluster_idx]
+
+    if len(cluster) < min_remaining_size + 1:
+        return set()
+
+    H = state.G.subgraph(cluster).copy()
+    if not nx.is_connected(H):
+        return set()
+
+    nodes: set[int] = set()
+    for u, v in nx.bridges(H):
+        H.remove_edge(u, v)
+        components = list(nx.connected_components(H))
+        H.add_edge(u, v)
+
+        if len(components) != 2:
+            continue
+
+        a = set(components[0])
+        b = set(components[1])
+        if len(a) == 1 and len(b) >= min_remaining_size:
+            nodes.update(a)
+        elif len(b) == 1 and len(a) >= min_remaining_size:
+            nodes.update(b)
+
+    return nodes
+
+
+def _delta_cut_bridge_node_to_cluster(
+    state: PartitionState,
+    v: int,
+    target_cluster: int,
+) -> float:
+    source_cluster = state.cluster_of[v]
+    if source_cluster == target_cluster:
+        return float("-inf")
+
+    source_size = state.cluster_sizes[source_cluster]
+    if source_size <= 1:
+        return float("-inf")
+
+    source_edges = state.internal_edges[source_cluster]
+    target_size = state.cluster_sizes[target_cluster]
+    target_edges = state.internal_edges[target_cluster]
+    internal_degree = neighbors_in_cluster(state, v, source_cluster)
+    target_degree = neighbors_in_cluster(state, v, target_cluster)
+
+    old_score = (source_edges / source_size) + (target_edges / target_size)
+    new_score = (
+        (source_edges - internal_degree) / (source_size - 1)
+        + (target_edges + target_degree) / (target_size + 1)
+    )
+
+    return new_score - old_score
+
+
+def best_bridge_singleton_cut(
+    state: PartitionState,
+    *,
+    min_remaining_size: int = 3,
+    random_seed: int | None = None,
+    epsilon: float = 1e-12,
+) -> tuple[Optional[tuple[int, Optional[int]]], float]:
+    """
+    Cuts a singleton side of a bridge, optionally relocating it to a better cluster.
+
+    The singleton cut is accepted on zero gain. Relocation is used only if it
+    improves the total objective more than the singleton placement.
+    """
+    cluster_indices = list(range(len(state.clusters)))
+    rng = random.Random(random_seed)
+    if random_seed is not None:
+        rng.shuffle(cluster_indices)
+
+    best: Optional[tuple[int, Optional[int]]] = None
+    best_delta = float("-inf")
+
+    for cluster_idx in cluster_indices:
+        candidate_nodes = list(
+            _singleton_bridge_nodes(
+                state,
+                cluster_idx,
+                min_remaining_size=min_remaining_size,
+            )
+        )
+        if random_seed is not None:
+            rng.shuffle(candidate_nodes)
+
+        for v in candidate_nodes:
+            singleton_delta = delta_peel_node_as_singleton(state, v)
+            if singleton_delta < -epsilon:
+                continue
+
+            node_target: Optional[int] = None
+            node_delta = singleton_delta
+            source_cluster = state.cluster_of[v]
+            candidate_clusters = {
+                state.cluster_of[u]
+                for u in state.G.neighbors(v)
+                if state.cluster_of[u] != source_cluster
+            }
+
+            for target_cluster in candidate_clusters:
+                delta = _delta_cut_bridge_node_to_cluster(state, v, target_cluster)
+                if delta > node_delta + epsilon:
+                    node_target = target_cluster
+                    node_delta = delta
+
+            if node_delta > best_delta + epsilon:
+                best = (v, node_target)
+                best_delta = node_delta
+
+    if best is None or best_delta < -epsilon:
+        return None, 0.0
+
+    return best, best_delta
+
+
+def apply_bridge_singleton_cut(
+    state: PartitionState,
+    v: int,
+    target_cluster: Optional[int],
+) -> None:
+    if target_cluster is None:
+        apply_peel_node_as_singleton(state, v)
+    else:
+        apply_move_node(state, v, target_cluster)
 
 
 def best_low_degree_peel(

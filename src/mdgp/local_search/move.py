@@ -3,6 +3,46 @@ from typing import Optional
 from mdgp.local_search.state import PartitionState, neighbors_in_cluster
 
 
+def delta_isolate_node(state: PartitionState, v: int) -> float:
+    """
+    Calculates the score change if node v is moved into a new singleton cluster.
+    """
+    source_cluster = state.cluster_of[v]
+    source_size = state.cluster_sizes[source_cluster]
+
+    if source_size <= 1:
+        return float("-inf")
+
+    source_edges = state.internal_edges[source_cluster]
+    deg_source = neighbors_in_cluster(state, v, source_cluster)
+
+    old_score = source_edges / source_size
+    new_score = (source_edges - deg_source) / (source_size - 1)
+
+    return new_score - old_score
+
+
+def apply_isolate_node(state: PartitionState, v: int) -> None:
+    """
+    Moves node v into a new singleton cluster.
+    """
+    source_cluster = state.cluster_of[v]
+
+    if state.cluster_sizes[source_cluster] <= 1:
+        raise ValueError("cannot isolate a node that already is a singleton")
+
+    deg_source = neighbors_in_cluster(state, v, source_cluster)
+
+    state.internal_edges[source_cluster] -= deg_source
+    state.cluster_sizes[source_cluster] -= 1
+    state.clusters[source_cluster].remove(v)
+
+    state.clusters.append({v})
+    state.cluster_sizes.append(1)
+    state.internal_edges.append(0)
+    state.cluster_of[v] = len(state.clusters) - 1
+
+
 def delta_move_node(state: PartitionState, v: int, target_cluster: int) -> float:
     """
     Calculates the change in the total partition density if node v is moved.
